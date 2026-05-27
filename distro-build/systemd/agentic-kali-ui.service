@@ -1,0 +1,18 @@
+[Unit]
+Description=Agentic Kali local web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/opt/agentic-kali
+ExecStart=/opt/agentic-kali/.venv/bin/python -m agentic_kali.ui
+User=root
+Group=root
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+

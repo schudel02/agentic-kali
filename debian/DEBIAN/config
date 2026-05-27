@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -e
+
+. /usr/share/debconf/confmodule
+
+db_input critical agentic-kali/accept-terms || true
+db_go
+db_get agentic-kali/accept-terms
+if [ "$RET" != "true" ]; then
+  db_fset agentic-kali/accept-terms seen false
+  db_input critical agentic-kali/accept-terms || true
+  db_go
+  db_get agentic-kali/accept-terms
+fi
+
+db_input medium agentic-kali/azure-endpoint || true
+db_input medium agentic-kali/azure-key || true
+db_input medium agentic-kali/azure-deployment || true
+db_input medium agentic-kali/azure-api-version || true
+db_go
+

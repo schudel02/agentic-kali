@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -e
+
+systemctl stop agentic-kali-ui 2>/dev/null || true
+systemctl stop agentic-kali 2>/dev/null || true
+rm -f /usr/local/bin/agentic-kali
+

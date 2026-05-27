@@ -1,0 +1,6 @@
+from agentic_kali.gui.floating import main
+
+
+if __name__ == "__main__":
+    main()
+

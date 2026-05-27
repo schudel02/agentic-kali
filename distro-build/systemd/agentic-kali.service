@@ -1,0 +1,16 @@
+[Unit]
+Description=Agentic Kali authorized security testing agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONUNBUFFERED=1
+WorkingDirectory=/opt/agentic-kali
+ExecStart=/opt/agentic-kali/.venv/bin/agentic-kali /etc/agentic-kali/scope.json
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target
+

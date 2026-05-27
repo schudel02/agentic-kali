@@ -1,0 +1,7 @@
+{
+  "AZURE_OPENAI_ENDPOINT": "https://YOUR-RESOURCE.openai.azure.com",
+  "AZURE_OPENAI_API_KEY": "replace-me",
+  "AZURE_OPENAI_DEPLOYMENT": "your-model-deployment",
+  "AZURE_OPENAI_API_VERSION": "2025-04-01-preview"
+}
+

@@ -1,0 +1,9 @@
+{
+  "engagement_name": "local-lab",
+  "targets": ["127.0.0.1"],
+  "allowed_actions": ["ping_check", "nmap_top_ports", "whatweb", "httpx_probe", "nuclei_safe"],
+  "approval_mode": "recon_only",
+  "intrusive_allowed": false,
+  "signed_permission": true,
+  "public_targets_allowed": false
+}

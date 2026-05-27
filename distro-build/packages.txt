@@ -1,0 +1,16 @@
+kali-linux-default
+python3
+python3-pip
+python3-venv
+python3-tk
+nmap
+masscan
+nuclei
+httpx-toolkit
+naabu
+whatweb
+gobuster
+ffuf
+nikto
+sqlmap
+metasploit-framework

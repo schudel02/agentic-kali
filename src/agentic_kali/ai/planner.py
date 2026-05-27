@@ -1,0 +1,47 @@
+from __future__ import annotations
+
+from agentic_kali.core.planner import SAFE_RECON_ACTIONS
+from agentic_kali.ai.provider import AIProvider
+from agentic_kali.ai.commands import actions_from_command
+from agentic_kali.evidence.store import EvidenceStore
+from agentic_kali.policy.models import Action, Scope
+
+
+class AIPlanner:
+    def __init__(self, scope: Scope, evidence: EvidenceStore, command: str = "") -> None:
+        self.scope = scope
+        self.evidence = evidence
+        self.command = command
+
+    def propose_next_actions(self) -> list[Action]:
+        ai_names = AIProvider().suggest_actions(self._prompt())
+        selected = ai_names or actions_from_command(self.command, self.scope.allowed_actions)
+        allowed_names = [
+            name
+            for name in selected
+            if name in SAFE_RECON_ACTIONS and name in self.scope.allowed_actions
+        ]
+
+        proposed: list[Action] = []
+        for target in self.scope.targets:
+            for name in allowed_names:
+                proposed.append(Action(name=name, target=target, intrusive=False))
+
+        self.evidence.log(
+            "ai.plan.proposed",
+            {
+                "mode": "constrained-safe-recon",
+                "ai_requested": ai_names,
+                "actions": [action.model_dump() for action in proposed],
+            },
+        )
+        return proposed
+
+    def _prompt(self) -> str:
+        return (
+            "Return only JSON like {\"actions\":[\"ping_check\"]}. "
+            f"Allowed safe actions: {', '.join(SAFE_RECON_ACTIONS)}. "
+            f"Scope allowed actions: {', '.join(self.scope.allowed_actions)}. "
+            f"User command: {self.command}. "
+            "Choose authorized recon actions only."
+        )

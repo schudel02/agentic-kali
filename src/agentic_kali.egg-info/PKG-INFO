@@ -1,0 +1,12 @@
+Metadata-Version: 2.4
+Name: agentic-kali
+Version: 0.1.0
+Summary: Authorized AI-assisted penetration testing orchestration skeleton
+Requires-Python: >=3.11
+License-File: LICENSE
+Requires-Dist: pydantic>=2.7
+Requires-Dist: fastapi>=0.111
+Requires-Dist: uvicorn>=0.30
+Provides-Extra: dev
+Requires-Dist: pytest>=8.2; extra == "dev"
+Dynamic: license-file

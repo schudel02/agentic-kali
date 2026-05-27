@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Agentic Kali Prompt
+Comment=Floating AI command prompt for authorized testing
+Exec=/opt/agentic-kali/.venv/bin/python -m agentic_kali.gui
+Terminal=false
+Categories=System;Security;
+

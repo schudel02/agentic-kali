@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -e
+
+. /usr/share/debconf/confmodule
+
+APP_DIR="/opt/agentic-kali"
+VENV_DIR="$APP_DIR/.venv"
+
+python3 -m venv "$VENV_DIR"
+"$VENV_DIR/bin/pip" install --upgrade pip
+"$VENV_DIR/bin/pip" install -e "$APP_DIR"
+
+ln -sf "$VENV_DIR/bin/agentic-kali" /usr/local/bin/agentic-kali
+mkdir -p /etc/agentic-kali
+db_get agentic-kali/accept-terms
+if [ "$RET" != "true" ]; then
+  echo "Terms not accepted. Configure package again to proceed."
+  exit 1
+fi
+
+db_get agentic-kali/azure-endpoint
+AZURE_ENDPOINT="$RET"
+db_get agentic-kali/azure-key
+AZURE_KEY="$RET"
+db_get agentic-kali/azure-deployment
+AZURE_DEPLOYMENT="$RET"
+db_get agentic-kali/azure-api-version
+AZURE_API_VERSION="${RET:-2025-04-01-preview}"
+
+cat > /etc/agentic-kali/config.json <<EOF
+{
+  "TERMS_ACCEPTED": true,
+  "AZURE_OPENAI_ENDPOINT": "$AZURE_ENDPOINT",
+  "AZURE_OPENAI_API_KEY": "$AZURE_KEY",
+  "AZURE_OPENAI_DEPLOYMENT": "$AZURE_DEPLOYMENT",
+  "AZURE_OPENAI_API_VERSION": "$AZURE_API_VERSION"
+}
+EOF
+chmod 0600 /etc/agentic-kali/config.json
+
+systemctl daemon-reload || true
+
+echo "Run: sudo agentic-kali init /etc/agentic-kali/scope.json"
+echo "UI:  sudo systemctl enable --now agentic-kali-ui"
+
+db_stop

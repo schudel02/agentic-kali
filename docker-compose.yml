@@ -1,0 +1,9 @@
+services:
+  agentic-kali:
+    build: .
+    ports:
+      - "8765:8765"
+    volumes:
+      - ./reports:/opt/agentic-kali/reports
+    command: [".venv/bin/python", "-m", "agentic_kali.ui"]
+

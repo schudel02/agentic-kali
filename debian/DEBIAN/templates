@@ -1,0 +1,27 @@
+Template: agentic-kali/accept-terms
+Type: boolean
+Default: false
+Description: Accept Agentic Kali authorized-use terms?
+ Agentic Kali is only for authorized security testing, defensive assessment,
+ education, and lab research. You must have explicit permission for all targets.
+
+Template: agentic-kali/azure-endpoint
+Type: string
+Description: Azure OpenAI endpoint
+ Example: https://YOUR-RESOURCE.openai.azure.com
+
+Template: agentic-kali/azure-key
+Type: password
+Description: Azure OpenAI API key
+ Leave blank to configure later with agentic-kali config.
+
+Template: agentic-kali/azure-deployment
+Type: string
+Description: Azure OpenAI deployment name
+ The model deployment name configured in Azure OpenAI.
+
+Template: agentic-kali/azure-api-version
+Type: string
+Default: 2025-04-01-preview
+Description: Azure OpenAI API version
+
