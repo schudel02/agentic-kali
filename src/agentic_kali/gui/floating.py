@@ -941,8 +941,10 @@ class FloatingPrompt:
         tk.Radiobutton(toolbar, text="Transcript", variable=self.preview_mode, value="transcript", command=self._refresh_preview).pack(side="left")
         tk.Radiobutton(toolbar, text="Raw Events", variable=self.preview_mode, value="raw", command=self._refresh_preview).pack(side="left", padx=8)
         self.preview_text = tk.Text(frame, wrap="word")
-        self.preview_text.tag_configure("transcript_action", lmargin1=90, lmargin2=90, rmargin=90, justify="center", font=("Serif", 11, "italic"))
-        self.preview_text.tag_configure("transcript_result", lmargin1=90, lmargin2=90, rmargin=90, justify="center", font=("Serif", 11))
+        self.preview_text.tag_configure("transcript_header", lmargin1=42, lmargin2=42, rmargin=42, spacing1=10, font=("TkDefaultFont", 9, "bold"), foreground="#174ea6")
+        self.preview_text.tag_configure("transcript_action", lmargin1=72, lmargin2=72, rmargin=72, spacing1=3, spacing3=8, font=("Serif", 11, "italic"))
+        self.preview_text.tag_configure("transcript_result", lmargin1=72, lmargin2=72, rmargin=72, spacing1=3, spacing3=8, font=("TkDefaultFont", 10))
+        self.preview_text.tag_configure("transcript_skip", elide=True)
         self.preview_text.tag_configure("raw", font=("Courier", 10), lmargin1=4, lmargin2=4, rmargin=4)
         preview_scroll = tk.Scrollbar(frame, orient="vertical", command=self.preview_text.yview)
         self.preview_text.configure(yscrollcommand=preview_scroll.set)
@@ -981,11 +983,14 @@ class FloatingPrompt:
         try:
             if self.preview_text.get("1.0", "end").strip() == "No activity yet.":
                 self.preview_text.delete("1.0", "end")
-            text, tag = self._preview_event_text(event)
-            if animated and tag.startswith("transcript_"):
-                self._type_preview_lines(text.splitlines(keepends=True), tag, scroll)
+            segments = self._preview_event_segments(event)
+            if not segments:
                 return
-            self.preview_text.insert("end", text, tag)
+            if animated and any(tag.startswith("transcript_") for _text, tag in segments):
+                self._type_preview_segments(segments, scroll)
+                return
+            for text, tag in segments:
+                self.preview_text.insert("end", text, tag)
             if scroll:
                 self.preview_text.see("end")
         except tk.TclError:
@@ -993,30 +998,61 @@ class FloatingPrompt:
             self.preview_text = None
 
     def _preview_event_text(self, event: dict[str, Any]) -> tuple[str, str]:
-        if self.preview_mode.get() == "raw":
-            return f"[{event['time']}] {event['event']}\n{json.dumps(event['data'], indent=2)}\n\n", "raw"
-        return self._quote_transcript(self._natural_event_text(event)) + "\n\n", self._transcript_tag(event)
+        segments = self._preview_event_segments(event)
+        if not segments:
+            return "", "transcript_skip"
+        return "".join(text for text, _tag in segments), segments[-1][1]
 
-    def _transcript_tag(self, event: dict[str, Any]) -> str:
+    def _preview_event_segments(self, event: dict[str, Any]) -> list[tuple[str, str]]:
+        if self.preview_mode.get() == "raw":
+            return [(f"[{event['time']}] {event['event']}\n{json.dumps(event['data'], indent=2)}\n\n", "raw")]
+        text = self._natural_event_text(event)
+        if not text:
+            return []
+        kind, label = self._transcript_kind(event)
+        return [
+            (f"{label}\n", "transcript_header"),
+            (self._format_transcript_text(text) + "\n\n", f"transcript_{kind}"),
+        ]
+
+    def _transcript_kind(self, event: dict[str, Any]) -> tuple[str, str]:
         name = event.get("event", "")
         if name.startswith("tool.") and name != "tool.description":
-            return "transcript_result"
+            return "result", "RESULT"
         if name in {"run.completed", "gui.launch.completed"}:
-            return "transcript_result"
-        return "transcript_action"
+            return "result", "RESULT"
+        if name == "run.preparing":
+            return "action", "PLAN"
+        return "action", "ACTION"
 
-    def _quote_transcript(self, text: str) -> str:
+    def _format_transcript_text(self, text: str) -> str:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
-        return "\n".join(f'"{line}"' for line in lines)
+        return "\n".join(lines)
 
-    def _type_preview_lines(self, lines: list[str], tag: str, scroll: bool, index: int = 0) -> None:
+    def _type_preview_segments(self, segments: list[tuple[str, str]], scroll: bool, index: int = 0) -> None:
+        if not self.preview_text or index >= len(segments):
+            return
+        text, tag = segments[index]
+        if tag == "transcript_header":
+            try:
+                self.preview_text.insert("end", text, tag)
+                self.root.after(80, lambda: self._type_preview_segments(segments, scroll, index + 1))
+            except tk.TclError:
+                self.preview = None
+                self.preview_text = None
+            return
+        self._type_preview_lines(text.splitlines(keepends=True), tag, scroll, done=lambda: self._type_preview_segments(segments, scroll, index + 1))
+
+    def _type_preview_lines(self, lines: list[str], tag: str, scroll: bool, index: int = 0, done=None) -> None:
         if not self.preview_text or index >= len(lines):
+            if done:
+                done()
             return
         try:
             self.preview_text.insert("end", lines[index], tag)
             if scroll:
                 self.preview_text.see("end")
-            self.root.after(260, lambda: self._type_preview_lines(lines, tag, scroll, index + 1))
+            self.root.after(220, lambda: self._type_preview_lines(lines, tag, scroll, index + 1, done))
         except tk.TclError:
             self.preview = None
             self.preview_text = None
@@ -1031,8 +1067,9 @@ class FloatingPrompt:
         if name == "run.started":
             return "Starting the approved test run and recording each action for the report."
         if name == "policy.decision":
-            action = data.get("action", "a test") if isinstance(data, dict) else "a test"
-            return f"Checking whether {action} is allowed by the saved scope before running it."
+            return ""
+        if name == "ai.plan.proposed":
+            return ""
         if name == "action.started":
             action = data.get("action", "a tool") if isinstance(data, dict) else "a tool"
             return self._action_explanation(action, target)
