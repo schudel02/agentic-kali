@@ -21,6 +21,7 @@ ALIASES = {
 
 HIGH_RISK = {"setoolkit", "msfconsole", "hydra", "sqlmap"}
 PRIVILEGED = {"wireshark", "setoolkit"}
+TERMINAL_TOOLS = {"setoolkit", "msfconsole"}
 
 
 @dataclass(frozen=True)
@@ -53,10 +54,10 @@ def parse_launch_request(text: str) -> LaunchRequest | None:
 
 
 def launch_program(command: str, args: tuple[str, ...] = (), privileged: bool = False) -> tuple[bool, str]:
-    desktop = _find_desktop_command(command)
     auth = _auth_prefix() if privileged else []
     if privileged and not auth:
         return False, "This tool needs admin rights, but pkexec/sudo is not available."
+    desktop = None if command in TERMINAL_TOOLS else _find_desktop_command(command)
     if desktop and not args:
         subprocess.Popen([*auth, *desktop])
         suffix = " Kali may ask for your password." if privileged else ""
@@ -65,7 +66,7 @@ def launch_program(command: str, args: tuple[str, ...] = (), privileged: bool = 
     resolved = shutil.which(command)
     if not resolved:
         return False, f"{command} is not installed or not on PATH."
-    if command in {"setoolkit", "msfconsole"}:
+    if command in TERMINAL_TOOLS:
         terminal = shutil.which("qterminal") or shutil.which("x-terminal-emulator")
         if terminal:
             subprocess.Popen([*auth, terminal, "-e", resolved, *args])

@@ -28,3 +28,19 @@ def test_clean_exec_strips_desktop_fields():
     from agentic_kali.desktop.apps import _clean_exec
 
     assert _clean_exec("firefox %u") == ["firefox"]
+
+
+def test_terminal_tools_skip_desktop_launch(monkeypatch):
+    import agentic_kali.desktop.apps as apps
+
+    monkeypatch.setattr(apps, "_find_desktop_command", lambda _command: ["bad-desktop-launcher"])
+    monkeypatch.setattr(apps, "_auth_prefix", lambda: [])
+    monkeypatch.setattr(apps.shutil, "which", lambda command: f"/usr/bin/{command}")
+    launched = []
+    monkeypatch.setattr(apps.subprocess, "Popen", launched.append)
+
+    ok, message = apps.launch_program("setoolkit")
+
+    assert ok
+    assert launched == [["/usr/bin/qterminal", "-e", "/usr/bin/setoolkit"]]
+    assert "terminal" in message
