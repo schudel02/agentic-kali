@@ -42,7 +42,12 @@ class FloatingPrompt:
         self.chat.tag_configure("user", justify="right", lmargin1=120, lmargin2=120, rmargin=12)
         self.chat.tag_configure("agent", justify="left", lmargin1=8, lmargin2=8, rmargin=80)
         self.chat.tag_configure("code", background="#eeeeee", font=("Courier", 10), lmargin1=18, lmargin2=18, rmargin=18)
-        self.chat.bind("<Key>", lambda event: "break")
+        self.chat.bind("<Key>", self._chat_keypress)
+        self.chat.bind("<Control-c>", self._copy_selection)
+        self.chat.bind("<Button-3>", self._show_chat_menu)
+        self.chat_menu = tk.Menu(self.root, tearoff=0)
+        self.chat_menu.add_command(label="Copy", command=self._copy_selection)
+        self.chat_menu.add_command(label="Select All", command=self._select_all_chat)
         self._say(
             "Agent Kal",
             "Hello James, I'm Agent Kal. Tell me what authorized system you want to test, and I'll choose the Kali tools, run safe checks, and explain what I find.",
@@ -273,6 +278,29 @@ class FloatingPrompt:
             self.prompt.focus_force()
         except tk.TclError:
             pass
+
+    def _chat_keypress(self, event) -> str | None:
+        if event.state & 0x4 and event.keysym.lower() in {"c", "a"}:
+            return None
+        return "break"
+
+    def _copy_selection(self, event=None) -> str:
+        try:
+            selected = self.chat.get("sel.first", "sel.last")
+        except tk.TclError:
+            selected = ""
+        if selected:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selected)
+        return "break"
+
+    def _select_all_chat(self, event=None) -> str:
+        self.chat.tag_add("sel", "1.0", "end")
+        return "break"
+
+    def _show_chat_menu(self, event) -> str:
+        self.chat_menu.tk_popup(event.x_root, event.y_root)
+        return "break"
 
     def _last_user_message(self) -> str:
         text = self.chat.get("1.0", "end")
