@@ -10,7 +10,7 @@ from typing import Any
 from agentic_kali.core.orchestrator import Orchestrator
 from agentic_kali.core.planner import SAFE_RECON_ACTIONS
 from agentic_kali.ai.commands import actions_from_command
-from agentic_kali.ai.request import extract_target, summarize_request
+from agentic_kali.ai.request import extract_target, summarize_request, wants_tool_run
 from agentic_kali.ai.chat import ChatSession
 from agentic_kali.desktop.watch import WatchMode
 from agentic_kali.policy.models import Scope
@@ -71,6 +71,9 @@ class FloatingPrompt:
             self.events = []
             command = self._last_user_message()
             self._say("Agent Kal", self.session.reply(command))
+            if not wants_tool_run(command):
+                self.status.set("Ready")
+                return
             target = extract_target(command)
             if target and target not in scope.targets:
                 self._say(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from agentic_kali.ai.provider import AIProvider
+from agentic_kali.ai.request import is_capability_question
 from agentic_kali.tools.capabilities import capability_menu, find_capability
 from agentic_kali.tools.catalog import explain_tool, recommend_tools
 
@@ -29,7 +30,7 @@ class ChatSession:
     @staticmethod
     def _fallback(user_message: str) -> str:
         lower = user_message.lower()
-        if "what can you do" in lower or "testing can you do" in lower or "show tests" in lower:
+        if is_capability_question(user_message):
             return capability_menu()
         capability = find_capability(lower)
         if capability:
