@@ -47,6 +47,16 @@ class FloatingPrompt:
         self.status = tk.StringVar(value="Ready")
         tk.Label(self.root, textvariable=self.status, anchor="w").pack(fill="x", padx=10)
 
+        self.thinking = tk.StringVar(value="")
+        self.thinking_label = tk.Label(
+            self.root,
+            textvariable=self.thinking,
+            anchor="w",
+            font=("Serif", 10, "italic"),
+            fg="#555555",
+        )
+        self.thinking_label.pack(fill="x", padx=10)
+
         frame = tk.Frame(self.root)
         frame.pack(fill="x", padx=10, pady=8)
         tk.Button(frame, text="Send", command=self.run).pack(side="left")
@@ -71,10 +81,13 @@ class FloatingPrompt:
     def _run_agent(self) -> None:
         try:
             self.status.set("Running scoped AI plan...")
+            self._set_thinking("Thinking through your request...")
             scope = Scope.model_validate(json.loads(DEFAULT_SCOPE.read_text(encoding="utf-8")))
             self.events = []
             command = self._last_user_message()
-            self._say("Agent Kal", self.session.reply(command))
+            reply = self.session.reply(command)
+            self._set_thinking("")
+            self._say("Agent Kal", reply)
             if not wants_tool_run(command):
                 self.status.set("Ready")
                 return
@@ -100,8 +113,12 @@ class FloatingPrompt:
             self.status.set(f"Done: {files['markdown']}")
         except Exception as exc:
             self.status.set("Error")
+            self._set_thinking("")
             self._say("Agent Kal", f"I need setup before I can run: {exc}")
             messagebox.showerror("Agentic Kali", str(exc))
+
+    def _set_thinking(self, message: str) -> None:
+        self.root.after(0, lambda: self.thinking.set(message))
 
     def _say(self, speaker: str, message: str, animated: bool = False) -> None:
         if speaker == "Agent Kal":
