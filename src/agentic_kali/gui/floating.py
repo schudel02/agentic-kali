@@ -281,6 +281,7 @@ class FloatingPrompt:
                 "- Prioritize any medium/high findings first.",
                 "- Patch or harden exposed services, then rerun the same test.",
                 "- If this was recon only, follow with Safe Vulnerability Check inside the same scope.",
+                "- For domain mapping, you can next ask for: web fingerprinting, subdomain discovery, content discovery, HTTP probing, or safe vulnerability checks.",
                 f"Report saved here: {files['markdown']}",
             ]
         )

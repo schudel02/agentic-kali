@@ -4,7 +4,7 @@ import re
 
 
 TARGET_RE = re.compile(
-    r"\b((?:https?://)?(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}|(?:\d{1,3}\.){3}\d{1,3}|localhost)\b"
+    r"\b((?:https?://)?(?:[a-zA-Z0-9-]+[\.,])+(?:[a-zA-Z]{2,})|(?:\d{1,3}\.){3}\d{1,3}|localhost)\b"
 )
 
 
@@ -13,6 +13,7 @@ def extract_target(command: str) -> str | None:
     if not match:
         return None
     target = match.group(1)
+    target = _normalize_domain_typo(target)
     if target.startswith(("http://", "https://")):
         return target
     if target == "localhost":
@@ -20,9 +21,17 @@ def extract_target(command: str) -> str | None:
     return target
 
 
+def _normalize_domain_typo(target: str) -> str:
+    if re.search(r"[a-zA-Z0-9-],[a-zA-Z]{2,}(?:/|$)", target):
+        return target.replace(",", ".")
+    return target
+
+
 def summarize_request(command: str, actions: list[str], target: str | None) -> str:
     target_text = target or "the configured scope"
     action_text = ", ".join(actions) if actions else "safe recon"
+    if "recon" in command.lower():
+        return f"I'll perform reconnaissance on {target_text}: mapping reachable services, web technologies, and response details so we can choose later vulnerability tests."
     return f"I'll test {target_text} with {action_text}, then summarize findings and recommendations."
 
 
