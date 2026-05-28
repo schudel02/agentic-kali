@@ -50,6 +50,8 @@ class FloatingPrompt:
         self.chat_menu.add_command(label="Copy", command=self._copy_selection)
         self.chat_menu.add_command(label="Select All", command=self._select_all_chat)
         self.admin_mode = False
+        self.speaking = False
+        self.say_queue: list[tuple[str, str, str, bool]] = []
         self._say(
             "Agent Kal",
             "Hello James, I'm Agent Kal. Tell me what authorized system you want to test, and I'll choose the Kali tools, run safe checks, and explain what I find.",
@@ -233,26 +235,41 @@ class FloatingPrompt:
         self.root.after(0, lambda: self.thinking.set(message))
 
     def _say(self, speaker: str, message: str, animated: bool = False) -> None:
+        self.root.after(0, lambda: self._enqueue_say(speaker, message, animated))
+
+    def _enqueue_say(self, speaker: str, message: str, animated: bool = False) -> None:
         if speaker == "Agent Kal":
             animated = True
             if self.admin_mode:
                 speaker = "Agent Kal (Admin Mode)"
         tag = "user" if speaker == "You" else "agent"
+        self.say_queue.append((speaker, message, tag, animated))
+        if not self.speaking:
+            self._drain_say_queue()
+
+    def _drain_say_queue(self) -> None:
+        if not self.say_queue:
+            self.speaking = False
+            self._focus_prompt()
+            return
+        self.speaking = True
+        speaker, message, tag, animated = self.say_queue.pop(0)
         self.chat.insert("end", f"{speaker}: ", tag)
         self.type_chars_on_page = 0
         if animated:
             if "```" in message:
                 self._insert_message_text(message + "\n\n", tag)
-                self._focus_prompt()
+                self._drain_say_queue()
             else:
                 self._type_text(message + "\n\n", tag=tag)
             return
         self._insert_message_text(message + "\n\n", tag)
         self.chat.see("end")
+        self._drain_say_queue()
 
     def _type_text(self, text: str, index: int = 0, tag: str = "agent") -> None:
         if index >= len(text):
-            self._focus_prompt()
+            self._drain_say_queue()
             return
         chunk = text[index : index + 4]
         self.chat.insert("end", chunk, tag)
