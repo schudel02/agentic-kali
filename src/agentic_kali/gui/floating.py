@@ -33,7 +33,11 @@ class FloatingPrompt:
         self.chat = tk.Text(self.root, height=20, wrap="word")
         self.chat.pack(fill="both", expand=True, padx=10, pady=(10, 6))
         self.chat.configure(state="disabled")
-        self._say("Agent Kal", "Hello James, I'm Agent Kal. Tell me what authorized system you want to test, and I'll choose the Kali tools, run safe checks, and explain what I find.")
+        self._say(
+            "Agent Kal",
+            "Hello James, I'm Agent Kal. Tell me what authorized system you want to test, and I'll choose the Kali tools, run safe checks, and explain what I find.",
+            animated=True,
+        )
 
         self.prompt = tk.Entry(self.root)
         self.prompt.pack(fill="x", padx=10, pady=(0, 6))
@@ -99,11 +103,28 @@ class FloatingPrompt:
             self._say("Agent Kal", f"I need setup before I can run: {exc}")
             messagebox.showerror("Agentic Kali", str(exc))
 
-    def _say(self, speaker: str, message: str) -> None:
+    def _say(self, speaker: str, message: str, animated: bool = False) -> None:
+        if speaker == "Agent Kal":
+            animated = True
         self.chat.configure(state="normal")
-        self.chat.insert("end", f"{speaker}: {message}\n\n")
+        self.chat.insert("end", f"{speaker}: ")
+        if animated:
+            self.chat.configure(state="disabled")
+            self._type_text(message + "\n\n")
+            return
+        self.chat.insert("end", f"{message}\n\n")
         self.chat.see("end")
         self.chat.configure(state="disabled")
+
+    def _type_text(self, text: str, index: int = 0) -> None:
+        if index >= len(text):
+            return
+        self.chat.configure(state="normal")
+        chunk = text[index : index + 3]
+        self.chat.insert("end", chunk)
+        self.chat.see("end")
+        self.chat.configure(state="disabled")
+        self.root.after(18, lambda: self._type_text(text, index + len(chunk)))
 
     def _last_user_message(self) -> str:
         text = self.chat.get("1.0", "end")
