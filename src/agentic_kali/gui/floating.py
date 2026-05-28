@@ -917,6 +917,8 @@ class FloatingPrompt:
         tk.Radiobutton(toolbar, text="Transcript", variable=self.preview_mode, value="transcript", command=self._refresh_preview).pack(side="left")
         tk.Radiobutton(toolbar, text="Raw Events", variable=self.preview_mode, value="raw", command=self._refresh_preview).pack(side="left", padx=8)
         self.preview_text = tk.Text(frame, wrap="word")
+        self.preview_text.tag_configure("transcript", lmargin1=90, lmargin2=90, rmargin=90, justify="center", font=("Serif", 11, "italic"))
+        self.preview_text.tag_configure("raw", font=("Courier", 10), lmargin1=4, lmargin2=4, rmargin=4)
         preview_scroll = tk.Scrollbar(frame, orient="vertical", command=self.preview_text.yview)
         self.preview_text.configure(yscrollcommand=preview_scroll.set)
         self.preview_text.pack(side="left", fill="both", expand=True)
@@ -942,29 +944,49 @@ class FloatingPrompt:
                 self.preview_text.insert("end", "No activity yet.\n")
                 return
             for event in self.events:
-                self._append_preview_event(event, scroll=False)
+                self._append_preview_event(event, scroll=False, animated=False)
             self.preview_text.see("end")
         except tk.TclError:
             self.preview = None
             self.preview_text = None
 
-    def _append_preview_event(self, event: dict[str, Any], scroll: bool = True) -> None:
+    def _append_preview_event(self, event: dict[str, Any], scroll: bool = True, animated: bool = True) -> None:
         if not self.preview_text:
             return
         try:
             if self.preview_text.get("1.0", "end").strip() == "No activity yet.":
                 self.preview_text.delete("1.0", "end")
-            self.preview_text.insert("end", self._preview_event_text(event))
+            text, tag = self._preview_event_text(event)
+            if animated and tag == "transcript":
+                self._type_preview_lines(text.splitlines(keepends=True), tag, scroll)
+                return
+            self.preview_text.insert("end", text, tag)
             if scroll:
                 self.preview_text.see("end")
         except tk.TclError:
             self.preview = None
             self.preview_text = None
 
-    def _preview_event_text(self, event: dict[str, Any]) -> str:
+    def _preview_event_text(self, event: dict[str, Any]) -> tuple[str, str]:
         if self.preview_mode.get() == "raw":
-            return f"[{event['time']}] {event['event']}\n{json.dumps(event['data'], indent=2)}\n\n"
-        return self._natural_event_text(event) + "\n\n"
+            return f"[{event['time']}] {event['event']}\n{json.dumps(event['data'], indent=2)}\n\n", "raw"
+        return self._quote_transcript(self._natural_event_text(event)) + "\n\n", "transcript"
+
+    def _quote_transcript(self, text: str) -> str:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        return "\n".join(f'"{line}"' for line in lines)
+
+    def _type_preview_lines(self, lines: list[str], tag: str, scroll: bool, index: int = 0) -> None:
+        if not self.preview_text or index >= len(lines):
+            return
+        try:
+            self.preview_text.insert("end", lines[index], tag)
+            if scroll:
+                self.preview_text.see("end")
+            self.root.after(260, lambda: self._type_preview_lines(lines, tag, scroll, index + 1))
+        except tk.TclError:
+            self.preview = None
+            self.preview_text = None
 
     def _natural_event_text(self, event: dict[str, Any]) -> str:
         name = event.get("event", "")
