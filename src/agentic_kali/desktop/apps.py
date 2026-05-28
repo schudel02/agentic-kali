@@ -23,6 +23,7 @@ ALIASES = {
 HIGH_RISK = {"setoolkit", "msfconsole", "hydra", "sqlmap"}
 PRIVILEGED = {"wireshark", "setoolkit"}
 TERMINAL_TOOLS = {"setoolkit", "msfconsole"}
+KNOWN_TOOLS = set(ALIASES.values()) | {"qterminal", "x-terminal-emulator", "terminal"}
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class LaunchRequest:
     args: tuple[str, ...] = ()
     privileged: bool = False
     terminal: bool = False
+    requires_tools_open: bool = False
 
 
 def parse_launch_request(text: str) -> LaunchRequest | None:
@@ -73,6 +75,7 @@ def parse_launch_request(text: str) -> LaunchRequest | None:
         args=args,
         privileged=command in PRIVILEGED,
         terminal=terminal or command in TERMINAL_TOOLS,
+        requires_tools_open=command not in KNOWN_TOOLS,
     )
 
 

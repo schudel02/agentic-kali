@@ -165,6 +165,10 @@ class FloatingPrompt:
             launch = parse_launch_request(command) or self._continued_launch(command)
             if launch:
                 self._set_thinking("")
+                if launch.requires_tools_open and "tools:open" not in scope.allowed_actions:
+                    self._say("Agent Kal", f"{launch.command} is available as an arbitrary Kali tool request. Add `tools:open` to scope Actions to let me open tools outside the built-in list.")
+                    self.status.set("Scope needs tools:open")
+                    return
                 self._gui_event("gui.launch.requested", {"tool": launch.command, "display_name": launch.display_name})
                 self._handle_launch(launch)
                 return

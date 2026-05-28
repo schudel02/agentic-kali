@@ -15,6 +15,7 @@ def test_parse_launch_normal_program():
     assert request.command == "firefox"
     assert request.risk == "normal"
     assert not request.privileged
+    assert not request.requires_tools_open
 
 
 def test_parse_firefox_url():
@@ -30,6 +31,7 @@ def test_parse_run_tool_with_args_in_terminal():
     assert request.command == "nmap"
     assert request.args == ("-sV", "127.0.0.1")
     assert request.terminal
+    assert request.requires_tools_open
 
 
 def test_clean_exec_strips_desktop_fields():
