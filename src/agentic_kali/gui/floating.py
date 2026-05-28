@@ -175,16 +175,13 @@ class FloatingPrompt:
             if not self._wants_run(command, target):
                 self.status.set("")
                 return
-            if target and target not in scope.targets:
-                self._say(
-                    "Agent Kal",
-                    f"I found target {target}, but it is not in your authorized scope. Say `I authorize testing of {target}` once, or add it in Settings.",
-                )
-                self.status.set("Needs scope update")
-                return
             if target:
                 self.last_target = target
-                scope = scope.model_copy(update={"targets": [target]})
+            scope = self._ensure_consent(scope, target)
+            if not scope:
+                self._say("Agent Kal", "I paused the test because written consent was not confirmed.")
+                self.status.set("Consent required")
+                return
             actions = actions_from_command(command, scope.allowed_actions)
             self._say("Agent Kal", summarize_request(command, actions, target))
             self._note(self._run_description(actions, target or ", ".join(scope.targets)))
@@ -350,6 +347,45 @@ class FloatingPrompt:
         DEFAULT_SCOPE.parent.mkdir(parents=True, exist_ok=True)
         self._write_scope(scope)
         return scope
+
+    def _ensure_consent(self, scope: Scope, target: str | None) -> Scope | None:
+        requested_targets = [target] if target else scope.targets
+        needs_consent = not scope.signed_permission or any(item not in scope.targets for item in requested_targets)
+        if not needs_consent:
+            return scope.model_copy(update={"targets": requested_targets or scope.targets}) if target else scope
+
+        target_text = ", ".join(requested_targets)
+        if not self._ask_written_consent(target_text):
+            return None
+        updated = scope.model_copy(
+            update={
+                "targets": list(dict.fromkeys([*scope.targets, *requested_targets])),
+                "allowed_actions": list(dict.fromkeys([*scope.allowed_actions, *SAFE_RECON_ACTIONS])),
+                "approval_mode": ApprovalMode.RECON_ONLY,
+                "signed_permission": True,
+                "public_targets_allowed": True,
+            }
+        )
+        self._write_scope(updated)
+        self._say("Agent Kal", f"Consent confirmed and saved for {target_text}.")
+        return updated.model_copy(update={"targets": requested_targets}) if target else updated
+
+    def _ask_written_consent(self, target_text: str) -> bool:
+        result: dict[str, bool] = {"approved": False}
+        done = threading.Event()
+
+        def ask() -> None:
+            result["approved"] = messagebox.askyesno(
+                "Written Consent Required",
+                "Before running tests, confirm you have written permission to test:\n\n"
+                f"{target_text}\n\n"
+                "Only continue for systems you own or are authorized to assess.",
+            )
+            done.set()
+
+        self.root.after(0, ask)
+        done.wait()
+        return result["approved"]
 
     def _set_thinking(self, message: str) -> None:
         self.root.after(0, lambda: self.thinking.set(message))
