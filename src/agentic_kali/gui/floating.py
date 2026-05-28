@@ -430,6 +430,7 @@ class FloatingPrompt:
                 "targets": targets,
                 "allowed_actions": list(dict.fromkeys([*existing.allowed_actions, *SAFE_RECON_ACTIONS])),
                 "approval_mode": ApprovalMode.RECON_ONLY,
+                "intrusive_allowed": True,
                 "signed_permission": True,
             }
         )
@@ -451,6 +452,7 @@ class FloatingPrompt:
                 "targets": list(dict.fromkeys([*scope.targets, *requested_targets])),
                 "allowed_actions": list(dict.fromkeys([*scope.allowed_actions, *SAFE_RECON_ACTIONS])),
                 "approval_mode": ApprovalMode.RECON_ONLY,
+                "intrusive_allowed": True,
                 "signed_permission": True,
                 "public_targets_allowed": True,
             }
@@ -464,13 +466,52 @@ class FloatingPrompt:
         done = threading.Event()
 
         def ask() -> None:
-            result["approved"] = messagebox.askyesno(
-                "Written Consent Required",
-                "Before running tests, confirm you have written permission to test:\n\n"
-                f"{target_text}\n\n"
-                "Only continue for systems you own or are authorized to assess.",
+            window = tk.Toplevel(self.root)
+            window.title("Written Consent Required")
+            window.attributes("-topmost", True)
+            window.geometry("560x360+120+120")
+            window.grab_set()
+
+            tk.Label(window, text="Do you have written permission to perform these tests?", font=("TkDefaultFont", 12, "bold"), wraplength=520).pack(fill="x", padx=16, pady=(16, 8))
+            tk.Label(window, text=f"Target host/scope: {target_text}", wraplength=520, justify="left").pack(fill="x", padx=16, pady=(0, 10))
+            tk.Label(
+                window,
+                text=(
+                    "WARNING: Running tests on unauthorized targets without written consent is illegal.\n\n"
+                    "Agent Kal and his developers urge you to only use this software for authorized testing purposes "
+                    "or educational purposes only and will not be held responsible for any misuse."
+                ),
+                font=("TkDefaultFont", 10, "bold"),
+                fg="#9a3412",
+                wraplength=520,
+                justify="left",
+            ).pack(fill="x", padx=16, pady=(0, 12))
+
+            tk.Label(window, text="Type AUTHORIZED to proceed with testing:", anchor="w").pack(fill="x", padx=16)
+            token = tk.Entry(window)
+            token.pack(fill="x", padx=16, pady=(4, 12))
+            token.focus_set()
+
+            def approve() -> None:
+                result["approved"] = token.get().strip() == "AUTHORIZED"
+                window.destroy()
+                done.set()
+
+            def cancel() -> None:
+                result["approved"] = False
+                window.destroy()
+                done.set()
+
+            buttons = tk.Frame(window)
+            buttons.pack(fill="x", padx=16, pady=8)
+            tk.Button(buttons, text="Proceed", command=approve).pack(side="left")
+            tk.Button(buttons, text="Cancel", command=cancel).pack(side="right")
+            token.bind("<Return>", lambda _event: approve())
+            window.protocol("WM_DELETE_WINDOW", cancel)
+            self._say(
+                "Agent Kal",
+                "Before I run tests, I need one written-consent confirmation for this host. Type AUTHORIZED in the confirmation window to continue.",
             )
-            done.set()
 
         self.root.after(0, ask)
         done.wait()
