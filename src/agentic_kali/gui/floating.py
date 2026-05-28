@@ -41,6 +41,8 @@ class FloatingPrompt:
         self.root.attributes("-topmost", True)
         self.root.geometry("640x520+40+40")
         self.root.resizable(True, True)
+        self.preview_mode = tk.StringVar(value="transcript")
+        self._build_menus()
 
         chat_frame = tk.Frame(self.root)
         chat_frame.pack(fill="both", expand=True, padx=10, pady=(10, 6))
@@ -62,6 +64,7 @@ class FloatingPrompt:
         self.chat_menu = tk.Menu(self.root, tearoff=0)
         self.chat_menu.add_command(label="Copy", command=self._copy_selection)
         self.chat_menu.add_command(label="Select All", command=self._select_all_chat)
+        self.chat_menu.add_command(label="Save Transcript", command=self.save_chat_transcript)
         self.admin_mode = False
         self.speaking = False
         self.say_queue: list[tuple[str, str, str, str, bool]] = []
@@ -105,10 +108,6 @@ class FloatingPrompt:
         frame = tk.Frame(self.root)
         frame.pack(fill="x", padx=10, pady=8)
         tk.Button(frame, text="Stop", command=self.stop).pack(side="left")
-        tk.Button(frame, text="Preview", command=self.show_preview).pack(side="left", padx=8)
-        tk.Button(frame, text="Reports", command=self.open_reports).pack(side="left", padx=8)
-        tk.Button(frame, text="Watch Mode", command=self.show_watch_mode).pack(side="left", padx=8)
-        tk.Button(frame, text="Settings", command=self.show_settings).pack(side="left", padx=8)
         tk.Button(frame, text="Quit", command=self.root.destroy).pack(side="right")
 
         self.preview: tk.Toplevel | None = None
@@ -123,6 +122,29 @@ class FloatingPrompt:
         self.countdown_after: str | None = None
         self.countdown_remaining = 0
         self.root.after(300, self._focus_prompt)
+
+    def _build_menus(self) -> None:
+        menubar = tk.Menu(self.root)
+        file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="Save Chat Transcript", command=self.save_chat_transcript)
+        file_menu.add_command(label="Open Reports Folder", command=self.open_reports)
+        file_menu.add_separator()
+        file_menu.add_command(label="Quit", command=self.root.destroy)
+        menubar.add_cascade(label="File", menu=file_menu)
+
+        view_menu = tk.Menu(menubar, tearoff=0)
+        view_menu.add_command(label="Live View", command=self.show_preview)
+        view_menu.add_command(label="Watch Mode", command=self.show_watch_mode)
+        view_menu.add_separator()
+        view_menu.add_radiobutton(label="Preview: Natural Transcript", variable=self.preview_mode, value="transcript", command=self._refresh_preview)
+        view_menu.add_radiobutton(label="Preview: Raw Events", variable=self.preview_mode, value="raw", command=self._refresh_preview)
+        menubar.add_cascade(label="View", menu=view_menu)
+
+        settings_menu = tk.Menu(menubar, tearoff=0)
+        settings_menu.add_command(label="Settings", command=self.show_settings)
+        settings_menu.add_command(label="Azure Config Wizard", command=run_config_wizard)
+        menubar.add_cascade(label="Options", menu=settings_menu)
+        self.root.config(menu=menubar)
 
     def run(self) -> None:
         command = self.prompt.get().strip()
@@ -276,7 +298,11 @@ class FloatingPrompt:
             counts[severity] = counts.get(severity, 0) + 1
         severity_text = ", ".join(f"{level}: {count}" for level, count in sorted(counts.items()))
         top = findings[:3]
-        lines = ["Stopped with partial results." if stopped else "Finished. Here is what I found:", f"Findings by severity: {severity_text}"]
+        lines = [
+            "Stopped with partial results." if stopped else "Finished. Here is what I found:",
+            f"Findings by severity: {severity_text}",
+            self._severity_plain_english(counts),
+        ]
         lines.append("Key findings:")
         for finding in top:
             title = finding.get("title", "Finding")
@@ -284,7 +310,8 @@ class FloatingPrompt:
             severity = finding.get("severity", "info")
             metadata = finding.get("metadata", {})
             detail = self._finding_detail(metadata) or "See report evidence for tool output."
-            lines.append(f"- {title} on {target} ({severity}): {detail}")
+            meaning = self._finding_layman_meaning(title, metadata)
+            lines.append(f"- {title} on {target} ({severity}): {detail} {meaning}")
         lines.extend(
             [
                 "Recommended next steps:",
@@ -302,10 +329,37 @@ class FloatingPrompt:
         if ports:
             open_ports = [str(item.get("port")) for item in ports if item.get("state") == "open"]
             if open_ports:
-                return f"Open ports found: {', '.join(open_ports)}."
+                services = [f"{item.get('port')} ({item.get('service', 'service')})" for item in ports if item.get("state") == "open"]
+                return f"Open network doors found: {', '.join(services or open_ports)}."
+        technologies = metadata.get("technologies") if isinstance(metadata, dict) else None
+        if technologies:
+            return f"The website appears to use: {', '.join(technologies[:8])}."
+        responses = metadata.get("responses") if isinstance(metadata, dict) else None
+        if responses:
+            return f"The web server responded to HTTP checks. Sample: {responses[0][:120]}."
         if isinstance(metadata, dict) and metadata:
             return "Structured metadata was captured for review."
         return ""
+
+    def _severity_plain_english(self, counts: dict[str, int]) -> str:
+        if any(counts.get(level, 0) for level in ("high", "critical")):
+            return "Plain English: at least one result may need urgent attention before the system is considered safe."
+        if counts.get("medium", 0):
+            return "Plain English: some items may increase risk and should be reviewed soon."
+        if counts.get("low", 0):
+            return "Plain English: the test found minor issues or tool warnings worth cleaning up."
+        return "Plain English: these are mostly informational results that help map what the target exposes."
+
+    def _finding_layman_meaning(self, title: str, metadata: dict) -> str:
+        metadata = metadata if isinstance(metadata, dict) else {}
+        lowered = title.lower()
+        if "nmap" in lowered or metadata.get("open_ports"):
+            return "That means the target has services listening on the network; each open service is something defenders should intentionally allow, patch, and monitor."
+        if "fingerprint" in lowered or metadata.get("technologies"):
+            return "That means the site reveals what software it uses, which helps defenders know what must be updated and helps testers choose the next safe checks."
+        if "http" in lowered or metadata.get("responses"):
+            return "That means the web server answered normally, so the next step is to review headers, exposed paths, and known safe checks."
+        return "That means Agent Kal gathered evidence that should be reviewed before choosing the next test."
 
     def _handle_launch(self, launch: LaunchRequest) -> None:
         self.pending_launch = launch
@@ -822,6 +876,10 @@ class FloatingPrompt:
             self.preview.geometry("680x520+480+40")
         frame = tk.Frame(self.preview)
         frame.pack(fill="both", expand=True, padx=8, pady=8)
+        toolbar = tk.Frame(frame)
+        toolbar.pack(fill="x", pady=(0, 6))
+        tk.Radiobutton(toolbar, text="Transcript", variable=self.preview_mode, value="transcript", command=self._refresh_preview).pack(side="left")
+        tk.Radiobutton(toolbar, text="Raw Events", variable=self.preview_mode, value="raw", command=self._refresh_preview).pack(side="left", padx=8)
         self.preview_text = tk.Text(frame, wrap="word")
         preview_scroll = tk.Scrollbar(frame, orient="vertical", command=self.preview_text.yview)
         self.preview_text.configure(yscrollcommand=preview_scroll.set)
@@ -860,14 +918,60 @@ class FloatingPrompt:
         try:
             if self.preview_text.get("1.0", "end").strip() == "No activity yet.":
                 self.preview_text.delete("1.0", "end")
-            self.preview_text.insert("end", f"[{event['time']}] {event['event']}\n")
-            self.preview_text.insert("end", json.dumps(event["data"], indent=2))
-            self.preview_text.insert("end", "\n\n")
+            self.preview_text.insert("end", self._preview_event_text(event))
             if scroll:
                 self.preview_text.see("end")
         except tk.TclError:
             self.preview = None
             self.preview_text = None
+
+    def _preview_event_text(self, event: dict[str, Any]) -> str:
+        if self.preview_mode.get() == "raw":
+            return f"[{event['time']}] {event['event']}\n{json.dumps(event['data'], indent=2)}\n\n"
+        return self._natural_event_text(event) + "\n\n"
+
+    def _natural_event_text(self, event: dict[str, Any]) -> str:
+        name = event.get("event", "")
+        data = event.get("data", {})
+        target = data.get("target", "the target") if isinstance(data, dict) else "the target"
+        if name == "run.preparing":
+            actions = ", ".join(data.get("actions", [])) if isinstance(data, dict) else "selected checks"
+            return f"Preparing the test plan for {target}. Agent Kal selected: {actions}."
+        if name == "run.started":
+            return "Starting the approved test run and recording each action for the report."
+        if name == "policy.decision":
+            action = data.get("action", "a test") if isinstance(data, dict) else "a test"
+            return f"Checking whether {action} is allowed by the saved scope before running it."
+        if name == "action.started":
+            action = data.get("action", "a tool") if isinstance(data, dict) else "a tool"
+            return self._action_explanation(action, target)
+        if name == "tool.description":
+            return data.get("description", "Running selected tool.") if isinstance(data, dict) else "Running selected tool."
+        if name.startswith("tool."):
+            tool = name.removeprefix("tool.").replace("_", " ")
+            found = data.get("found", True) if isinstance(data, dict) else True
+            status = "finished and returned output" if found else "was not found on this system"
+            return f"{tool} {status}. Agent Kal is saving the output so it can explain the result and include it in the report."
+        if name == "run.completed":
+            count = data.get("findings", 0) if isinstance(data, dict) else 0
+            return f"Test run completed. Agent Kal found {count} reportable item(s) and is preparing a plain-English summary."
+        if name == "gui.launch.requested":
+            tool = data.get("tool", "the requested tool") if isinstance(data, dict) else "the requested tool"
+            return f"Opening {tool} because the operator asked Agent Kal to launch it."
+        if name == "gui.launch.completed":
+            message = data.get("message", "Launch completed.") if isinstance(data, dict) else "Launch completed."
+            return message
+        return f"{name.replace('.', ' ').title()}: {json.dumps(data, ensure_ascii=True)}"
+
+    def _action_explanation(self, action: str, target: str) -> str:
+        explanations = {
+            "ping_check": "Checking that the target is reachable and that the workflow is scoped correctly.",
+            "nmap_top_ports": "Opening nmap. Nmap checks common network ports, which are like doors into a system, so Agent Kal can see what services are exposed.",
+            "whatweb": "Opening WhatWeb. WhatWeb identifies website software and plugins so the operator can understand what technologies may need patching.",
+            "httpx_probe": "Opening httpx. httpx checks web responses, page titles, and visible technologies to map what the website exposes.",
+            "nuclei_safe": "Opening nuclei with low-risk templates. Nuclei compares the target against known safe checks for common exposures and misconfigurations.",
+        }
+        return f"{explanations.get(action, 'Running the selected Kali tool.')} Target: {target}."
 
     def show_settings(self) -> None:
         window = tk.Toplevel(self.root)
@@ -935,6 +1039,16 @@ class FloatingPrompt:
             return
         subprocess.Popen([opener, str(REPORTS_DIR.resolve())])
         self._gui_event("gui.reports.opened", {"path": str(REPORTS_DIR.resolve())})
+
+    def save_chat_transcript(self) -> None:
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        path = REPORTS_DIR / f"chat-transcript-{stamp}.txt"
+        text = self.chat.get("1.0", "end").strip() + "\n"
+        path.write_text(text, encoding="utf-8")
+        self.status.set(f"Saved transcript: {path}")
+        messagebox.showinfo("Agentic Kali", f"Saved chat transcript:\n{path}")
+        self._gui_event("gui.transcript.saved", {"path": str(path)})
 
     def _save_scope(self, fields: dict[str, tk.Entry]) -> None:
         scope = Scope(
