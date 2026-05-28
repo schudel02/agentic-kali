@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from agentic_kali.policy.security_settings import UNSAFE_BUILD_TERMS
+from agentic_kali.policy.security_settings import all_blocked_build_terms
 
 CUSTOM_TOOLS_DIR = Path.home() / ".agentic-kali" / "custom-tools"
 
@@ -34,7 +34,7 @@ def parse_build_request(text: str) -> BuildRequest | None:
 
 def is_safe_build_request(request: BuildRequest) -> bool:
     text = request.description.lower()
-    return not any(term in text for term in UNSAFE_BUILD_TERMS)
+    return not any(term in text for term in all_blocked_build_terms())
 
 
 def build_custom_tool(request: BuildRequest, output_dir: Path = CUSTOM_TOOLS_DIR) -> BuiltTool:

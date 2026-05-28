@@ -12,7 +12,7 @@ from tkinter import messagebox
 from typing import Any
 
 from agentic_kali.core.orchestrator import Orchestrator
-from agentic_kali.policy.security_settings import ALL_ACTIONS, SAFE_RECON_ACTIONS
+from agentic_kali.policy.security_settings import ADMIN_GUARDRAILS, ALL_ACTIONS, SAFE_RECON_ACTIONS, UNSAFE_BUILD_TERMS, load_admin_guardrails
 from agentic_kali.ai.commands import actions_from_command
 from agentic_kali.ai.request import extract_target, summarize_request, wants_tool_run, wants_tool_run_intent
 from agentic_kali.ai.chat import ChatSession
@@ -1171,6 +1171,8 @@ class FloatingPrompt:
         targets.insert(0, ",".join(scope.targets))
         intrusive = tk.BooleanVar(value=scope.intrusive_allowed)
         public_targets = tk.BooleanVar(value=scope.public_targets_allowed)
+        guardrails = tk.Text(window, height=6, wrap="word")
+        guardrails.insert("1.0", "\n".join(load_admin_guardrails()))
 
         tk.Label(window, text="Targets", anchor="w").pack(fill="x", padx=10, pady=(12, 0))
         targets.pack(fill="x", padx=10)
@@ -1178,9 +1180,11 @@ class FloatingPrompt:
         actions.pack(fill="x", padx=10)
         tk.Checkbutton(window, text="Intrusive tests allowed for authorized targets", variable=intrusive).pack(anchor="w", padx=10, pady=(12, 0))
         tk.Checkbutton(window, text="Public targets explicitly authorized", variable=public_targets).pack(anchor="w", padx=10)
+        tk.Label(window, text="Extra blocked build terms (one per line)", anchor="w").pack(fill="x", padx=10, pady=(12, 0))
+        guardrails.pack(fill="both", expand=True, padx=10)
 
-        tk.Label(window, text=f"Source defaults: {Path('src/agentic_kali/policy/security_settings.py')}", anchor="w", fg="#555555", wraplength=520).pack(fill="x", padx=10, pady=(12, 0))
-        tk.Button(window, text="Save Security Scope", command=lambda: self._save_security_scope(scope, targets, actions, intrusive, public_targets)).pack(fill="x", padx=10, pady=14)
+        tk.Label(window, text=f"Built-in guardrails stay active: {len(UNSAFE_BUILD_TERMS)} terms. Admin extras save to {ADMIN_GUARDRAILS}", anchor="w", fg="#555555", wraplength=520).pack(fill="x", padx=10, pady=(12, 0))
+        tk.Button(window, text="Save Security Settings", command=lambda: self._save_security_scope(scope, targets, actions, intrusive, public_targets, guardrails)).pack(fill="x", padx=10, pady=14)
 
     def show_watch_mode(self) -> None:
         try:
@@ -1235,6 +1239,7 @@ class FloatingPrompt:
         actions: tk.Entry,
         intrusive: tk.BooleanVar,
         public_targets: tk.BooleanVar,
+        guardrails: tk.Text,
     ) -> None:
         updated = existing.model_copy(
             update={
@@ -1245,7 +1250,16 @@ class FloatingPrompt:
             }
         )
         self._write_scope(updated)
+        self._write_admin_guardrails([line.strip() for line in guardrails.get("1.0", "end").splitlines() if line.strip()])
         messagebox.showinfo("Agentic Kali", f"Saved security scope:\n{DEFAULT_SCOPE}")
+
+    def _write_admin_guardrails(self, terms: list[str]) -> None:
+        ADMIN_GUARDRAILS.parent.mkdir(parents=True, exist_ok=True)
+        ADMIN_GUARDRAILS.write_text(json.dumps({"blocked_build_terms": terms}, indent=2), encoding="utf-8")
+        try:
+            ADMIN_GUARDRAILS.chmod(0o660)
+        except OSError:
+            pass
 
     def _write_scope(self, scope: Scope) -> None:
         DEFAULT_SCOPE.parent.mkdir(parents=True, exist_ok=True)
