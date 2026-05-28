@@ -212,6 +212,8 @@ class FloatingPrompt:
                 self._say("Agent Kal", "I paused the test because written consent was not confirmed.")
                 self.status.set("Consent required")
                 return
+            if target:
+                self.last_target = target
             self._run_scoped_tests(command, scope, target)
         except Exception as exc:
             self._exit_run_mode()
@@ -244,6 +246,8 @@ class FloatingPrompt:
         else:
             self._say("Agent Kal", self._summarize_results(report, files))
             self.status.set(f"Done: {files['markdown']}")
+        if target:
+            self.last_target = target
         self._exit_run_mode()
 
     def _continued_launch(self, command: str) -> LaunchRequest | None:

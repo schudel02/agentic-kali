@@ -6,8 +6,8 @@ from agentic_kali.core.planner import SAFE_RECON_ACTIONS
 KEYWORDS = {
     "ping_check": ("ping", "check", "alive"),
     "nmap_top_ports": ("nmap", "port", "ports", "service"),
-    "whatweb": ("whatweb", "fingerprint", "web"),
-    "httpx_probe": ("httpx", "title", "tech", "http"),
+    "whatweb": ("whatweb", "fingerprint", "web", "mapping", "map", "domain"),
+    "httpx_probe": ("httpx", "title", "tech", "http", "mapping", "map", "domain"),
     "nuclei_safe": ("nuclei", "template", "exposure", "misconfig"),
 }
 

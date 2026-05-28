@@ -8,3 +8,7 @@ def test_actions_from_command_matches_keywords():
 def test_actions_from_command_falls_back_to_allowed_safe_actions():
     assert actions_from_command("do recon", ["ping_check"]) == ["ping_check"]
 
+
+def test_domain_mapping_selects_web_mapping_actions():
+    assert actions_from_command("proceed with domain mapping", ["whatweb", "httpx_probe"]) == ["whatweb", "httpx_probe"]
+

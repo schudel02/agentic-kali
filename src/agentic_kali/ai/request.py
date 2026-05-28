@@ -54,13 +54,17 @@ def wants_tool_run_intent(command: str) -> bool:
         "quick recon",
         "run tests",
         "run test",
+        "domain mapping",
+        "map domain",
+        "mapping",
+        "proceed with domain mapping",
         "scan it",
         "test it",
         "check it",
         "scan that",
         "test that",
     )
-    run_words = ("scan", "test", "pentest", "check", "enumerate", "probe", "fingerprint", "recon")
+    run_words = ("scan", "test", "pentest", "check", "enumerate", "probe", "fingerprint", "recon", "mapping")
     return any(phrase in text for phrase in run_phrases) or any(word in text for word in run_words)
 
 
