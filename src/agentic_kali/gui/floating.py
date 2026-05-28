@@ -166,9 +166,10 @@ class FloatingPrompt:
             if launch:
                 self._set_thinking("")
                 if launch.requires_tools_open and "tools:open" not in scope.allowed_actions:
-                    self._say("Agent Kal", f"{launch.command} is available as an arbitrary Kali tool request. Add `tools:open` to scope Actions to let me open tools outside the built-in list.")
-                    self.status.set("Scope needs tools:open")
-                    return
+                    scope = self._ensure_tools_open(scope, launch.command)
+                    if not scope:
+                        self.status.set("tools:open required")
+                        return
                 self._gui_event("gui.launch.requested", {"tool": launch.command, "display_name": launch.display_name})
                 self._handle_launch(launch)
                 return
@@ -180,12 +181,14 @@ class FloatingPrompt:
                 self._handle_browser(browser_request)
                 return
             target = extract_target(command) or self.last_target
-            reply = self.session.reply(command)
-            self._set_thinking("")
-            self._say("Agent Kal", reply)
-            if not self._wants_run(command, target):
+            wants_run = self._wants_run(command, target)
+            if not wants_run:
+                reply = self.session.reply(command)
+                self._set_thinking("")
+                self._say("Agent Kal", reply)
                 self.status.set("")
                 return
+            self._set_thinking("")
             if target:
                 self.last_target = target
             scope = self._ensure_consent(scope, target)
@@ -307,6 +310,31 @@ class FloatingPrompt:
         self.pending_launch = None if ok else launch
         self._say("Agent Kal", output)
         self.status.set("" if ok else "Launch failed")
+
+    def _ensure_tools_open(self, scope: Scope, tool: str) -> Scope | None:
+        if "tools:open" in scope.allowed_actions:
+            return scope
+        if not self._ask_tools_open(tool):
+            return None
+        updated = scope.model_copy(update={"allowed_actions": list(dict.fromkeys([*scope.allowed_actions, "tools:open"]))})
+        self._write_scope(updated)
+        self._say("Agent Kal", "`tools:open` saved to scope. I will remember this for future Kali tool launches.")
+        return updated
+
+    def _ask_tools_open(self, tool: str) -> bool:
+        result: dict[str, bool] = {"approved": False}
+        done = threading.Event()
+
+        def ask() -> None:
+            result["approved"] = messagebox.askyesno(
+                "Enable tools:open",
+                f"{tool} is outside the built-in launcher list.\n\nEnable tools:open for this scope so Agent Kal can open installed Kali tools when requested?",
+            )
+            done.set()
+
+        self.root.after(0, ask)
+        done.wait()
+        return result["approved"]
 
     def _handle_lab_request(self, scope: Scope, lab_request) -> None:
         try:
