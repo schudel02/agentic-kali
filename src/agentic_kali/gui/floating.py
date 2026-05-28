@@ -13,6 +13,7 @@ from agentic_kali.ai.commands import actions_from_command
 from agentic_kali.ai.request import extract_target, summarize_request, wants_tool_run
 from agentic_kali.ai.chat import ChatSession
 from agentic_kali.desktop.watch import WatchMode
+from agentic_kali.desktop.apps import launch_program, parse_launch_request
 from agentic_kali.policy.models import Scope
 from agentic_kali.reporting.history import append_history
 from agentic_kali.setup import run_config_wizard
@@ -102,6 +103,21 @@ class FloatingPrompt:
             reply = self.session.reply(command)
             self._set_thinking("")
             self._say("Agent Kal", reply)
+            launch = parse_launch_request(command)
+            if launch:
+                if launch.risk == "approval_required":
+                    approved = messagebox.askyesno(
+                        "Approve Launch",
+                        f"Open {launch.display_name} ({launch.command})?\n\nThis is marked {launch.risk}.",
+                    )
+                    if not approved:
+                        self._say("Agent Kal", "Launch cancelled.")
+                        self.status.set("")
+                        return
+                ok, output = launch_program(launch.command)
+                self._say("Agent Kal", output)
+                self.status.set("" if ok else "Launch failed")
+                return
             if not wants_tool_run(command):
                 self.status.set("")
                 return

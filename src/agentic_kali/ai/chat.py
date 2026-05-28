@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from agentic_kali.ai.provider import AIProvider
 from agentic_kali.ai.request import is_capability_question
+from agentic_kali.desktop.apps import parse_launch_request
 from agentic_kali.tools.capabilities import capability_menu, find_capability
 from agentic_kali.tools.catalog import explain_tool, recommend_tools
 
@@ -30,6 +31,14 @@ class ChatSession:
     @staticmethod
     def _fallback(user_message: str) -> str:
         lower = user_message.lower()
+        launch = parse_launch_request(user_message)
+        if launch:
+            if launch.risk == "approval_required":
+                return (
+                    f"I can open {launch.display_name}. It is a high-risk pentest tool, so I’ll ask for approval first. "
+                    "I can launch it, but I won’t automate phishing, credential theft, stealth, or unauthorized activity."
+                )
+            return f"I can open {launch.display_name} for you."
         if is_capability_question(user_message):
             return capability_menu()
         if "authorized target" in lower or "scope" in lower:
