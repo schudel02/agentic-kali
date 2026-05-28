@@ -4,7 +4,7 @@ from agentic_kali.ai.provider import AIProvider
 from agentic_kali.ai.request import is_capability_question
 from agentic_kali.desktop.apps import parse_launch_request
 from agentic_kali.desktop.browser import parse_browser_request
-from agentic_kali.tools.capabilities import capability_menu, find_capability, recommended_scope
+from agentic_kali.tools.capabilities import beginner_walkthrough, capability_menu, find_capability, recommended_scope
 from agentic_kali.tools.catalog import explain_tool, recommend_tools
 
 
@@ -39,6 +39,9 @@ class ChatSession:
         if self.awaiting_scope_choice and lower in {"yes", "y", "yeah", "sure", "ok", "okay"}:
             self.awaiting_scope_choice = False
             return recommended_scope()
+        if _asks_beginner_walkthrough(lower):
+            self.awaiting_scope_choice = True
+            return beginner_walkthrough()
         if _asks_common_tests(lower) or is_capability_question(user_message):
             self.awaiting_scope_choice = True
             return capability_menu()
@@ -97,3 +100,9 @@ class ChatSession:
 
 def _asks_common_tests(text: str) -> bool:
     return "common" in text and any(phrase in text for phrase in ("penetration test", "pentest", "security test"))
+
+
+def _asks_beginner_walkthrough(text: str) -> bool:
+    beginner = any(phrase in text for phrase in ("new to pentesting", "new to pen testing", "new to penetration testing", "i'm new", "im new", "beginner"))
+    wants_tests = any(phrase in text for phrase in ("run some tests", "run tests", "pentest", "pen test", "penetration test"))
+    return beginner and wants_tests

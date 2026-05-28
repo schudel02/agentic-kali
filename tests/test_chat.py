@@ -25,3 +25,11 @@ def test_chat_suggests_scope_after_common_tests():
     followup = session.reply("yes")
     assert "recommended" in followup.lower()
     assert "what target" in followup.lower()
+
+
+def test_chat_beginner_walkthrough():
+    response = ChatSession().reply("I'm new to pen testing but I want to run some tests")
+    lower = response.lower()
+    assert "walk you through" in lower
+    assert "what would you like to test" in lower
+    assert "generate a report" in lower

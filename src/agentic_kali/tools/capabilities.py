@@ -86,6 +86,25 @@ def recommended_scope() -> str:
     )
 
 
+def beginner_walkthrough() -> str:
+    return (
+        "Okay. Since you're new to pentesting, I'll walk you through it step by step.\n\n"
+        "What would you like to test?\n"
+        "- Local machine or lab VM\n"
+        "- Website or web app you own or have permission to test\n"
+        "- Internal network host\n"
+        "- A single service like SSH, HTTP, or SMB\n\n"
+        "Beginner path I recommend:\n"
+        "1. Confirm scope and permission.\n"
+        "2. Run quick recon to find live services.\n"
+        "3. Fingerprint web/software versions.\n"
+        "4. Run safe vulnerability checks.\n"
+        "5. Review findings and recommended fixes.\n"
+        "6. Generate a report with evidence and next steps.\n\n"
+        "Send the target you are authorized to test, like `I authorize testing of 127.0.0.1`, and I'll guide the run."
+    )
+
+
 def find_capability(text: str) -> Capability | None:
     lowered = text.lower()
     for item in CAPABILITIES:
