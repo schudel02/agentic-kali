@@ -161,7 +161,6 @@ class FloatingPrompt:
         self.chat.configure(state="normal")
         chunk = text[index : index + 2]
         self.chat.insert("end", chunk)
-        self.chat.see("end")
         self.chat.configure(state="disabled")
         self.root.after(45, lambda: self._type_text(text, index + len(chunk)))
 
