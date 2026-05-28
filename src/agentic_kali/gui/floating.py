@@ -71,6 +71,7 @@ class FloatingPrompt:
         self.events: list[dict[str, Any]] = []
         self.session = ChatSession()
         self.stop_requested = False
+        self.type_chars_on_page = 0
         self.root.after(300, self._focus_prompt)
 
     def run(self) -> None:
@@ -143,6 +144,7 @@ class FloatingPrompt:
             animated = True
         self.chat.configure(state="normal")
         self.chat.insert("end", f"{speaker}: ")
+        self.type_chars_on_page = 0
         if animated:
             self.chat.configure(state="disabled")
             self._type_text(message + "\n\n")
@@ -158,9 +160,20 @@ class FloatingPrompt:
         self.chat.configure(state="normal")
         chunk = text[index : index + 4]
         self.chat.insert("end", chunk)
-        self.chat.see("end")
+        self.type_chars_on_page += len(chunk)
+        if self.type_chars_on_page >= self._chat_page_chars():
+            self.chat.yview_scroll(1, "pages")
+            self.type_chars_on_page = 0
         self.chat.configure(state="disabled")
         self.root.after(15, lambda: self._type_text(text, index + len(chunk)))
+
+    def _chat_page_chars(self) -> int:
+        try:
+            width = max(40, int(self.chat.winfo_width() / 8))
+            height = max(8, int(self.chat.winfo_height() / 18))
+            return width * height
+        except tk.TclError:
+            return 900
 
     def _focus_prompt(self) -> None:
         try:
