@@ -3,6 +3,7 @@ from __future__ import annotations
 from agentic_kali.ai.provider import AIProvider
 from agentic_kali.ai.request import is_capability_question
 from agentic_kali.desktop.apps import parse_launch_request
+from agentic_kali.desktop.browser import parse_browser_request
 from agentic_kali.tools.capabilities import capability_menu, find_capability
 from agentic_kali.tools.catalog import explain_tool, recommend_tools
 
@@ -12,7 +13,7 @@ SYSTEM_PROMPT = (
     "Be conversational, concise, and beginner-friendly. "
     "Only discuss authorized security testing. "
     "If a user asks to test a target, explain the safe plan and mention scope/permission. "
-    "Do not provide stealth, persistence, credential theft, or destructive guidance."
+    
 )
 
 
@@ -31,6 +32,9 @@ class ChatSession:
     @staticmethod
     def _fallback(user_message: str) -> str:
         lower = user_message.lower()
+        browser = parse_browser_request(user_message)
+        if browser:
+            return "I can control the browser for that. I’ll ask for permission first, then perform the browser action."
         launch = parse_launch_request(user_message)
         if launch:
             if launch.risk == "approval_required":

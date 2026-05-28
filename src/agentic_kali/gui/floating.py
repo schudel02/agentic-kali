@@ -14,6 +14,7 @@ from agentic_kali.ai.request import extract_target, summarize_request, wants_too
 from agentic_kali.ai.chat import ChatSession
 from agentic_kali.desktop.watch import WatchMode
 from agentic_kali.desktop.apps import launch_program, parse_launch_request
+from agentic_kali.desktop.browser import parse_browser_request, run_browser_request
 from agentic_kali.policy.models import Scope
 from agentic_kali.reporting.history import append_history
 from agentic_kali.setup import run_config_wizard
@@ -103,6 +104,20 @@ class FloatingPrompt:
             reply = self.session.reply(command)
             self._set_thinking("")
             self._say("Agent Kal", reply)
+            browser_request = parse_browser_request(command)
+            if browser_request:
+                approved = messagebox.askyesno(
+                    "Approve Browser Control",
+                    f"Allow Agent Kal to perform browser action: {browser_request.action} {browser_request.value}".strip(),
+                )
+                if not approved:
+                    self._say("Agent Kal", "Browser action cancelled.")
+                    self.status.set("")
+                    return
+                ok, output = run_browser_request(browser_request)
+                self._say("Agent Kal", output)
+                self.status.set("" if ok else "Browser action failed")
+                return
             launch = parse_launch_request(command)
             if launch:
                 if launch.risk == "approval_required":

@@ -98,6 +98,7 @@ Settings can be configured inside the floating GUI.
 Agent Kal uses Azure AI for conversational replies when configured.
 It can also explain Kali tools and recommend tools by task.
 Ask "what testing can you do?" to show selectable pentest workflows.
+Browser control commands require approval before Agent Kal opens pages, types, refreshes, or navigates.
 
 Watch Mode uses `xdotool` and `wmctrl` to preview desktop automation steps.
 
