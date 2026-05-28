@@ -87,6 +87,8 @@ class FloatingPrompt:
 
         self.status = tk.StringVar(value="")
         tk.Label(self.root, textvariable=self.status, anchor="w").pack(fill="x", padx=10)
+        self.mode = tk.StringVar(value="Chat Prompt")
+        tk.Label(self.root, textvariable=self.mode, anchor="w", font=("TkDefaultFont", 9, "bold"), fg="#174ea6").pack(fill="x", padx=10)
 
         self.thinking = tk.StringVar(value="")
         self.thinking_label = tk.Label(
@@ -115,6 +117,8 @@ class FloatingPrompt:
         self.type_chars_on_page = 0
         self.pending_launch: LaunchRequest | None = None
         self.last_target: str | None = None
+        self.countdown_after: str | None = None
+        self.countdown_remaining = 0
         self.root.after(300, self._focus_prompt)
 
     def run(self) -> None:
@@ -185,7 +189,7 @@ class FloatingPrompt:
             self._say("Agent Kal", summarize_request(command, actions, target))
             self._note(self._run_description(actions, target or ", ".join(scope.targets)))
             self._gui_event("run.preparing", {"target": target or scope.targets, "actions": actions})
-            self.status.set("Running tests...")
+            self._enter_run_mode(actions)
             report = Orchestrator(
                 scope,
                 on_event=self._append_event,
@@ -204,7 +208,9 @@ class FloatingPrompt:
             else:
                 self._say("Agent Kal", f"Finished. I saved the report here: {files['markdown']}")
                 self.status.set(f"Done: {files['markdown']}")
+            self._exit_run_mode()
         except Exception as exc:
+            self._exit_run_mode()
             self.status.set("Error")
             self._set_thinking("")
             self._say("Agent Kal", f"I need setup before I can run: {exc}")
@@ -280,6 +286,50 @@ class FloatingPrompt:
         if "nuclei_safe" in actions:
             return f"Opening nuclei and running low-risk checks on {target}."
         return f"Preparing scoped safe checks for {target}."
+
+    def _enter_run_mode(self, actions: list[str]) -> None:
+        seconds = self._estimate_seconds(actions)
+        self.root.after(0, lambda: self._start_run_mode(seconds))
+
+    def _start_run_mode(self, seconds: int) -> None:
+        self.mode.set("Run Test Mode")
+        self.root.title("Agentic Kali - Run Test Mode")
+        self.show_preview(attached=True)
+        self._start_countdown(seconds)
+
+    def _exit_run_mode(self) -> None:
+        self.root.after(0, self._stop_run_mode)
+
+    def _stop_run_mode(self) -> None:
+        if self.countdown_after:
+            self.root.after_cancel(self.countdown_after)
+            self.countdown_after = None
+        self.mode.set("Chat Prompt")
+        self.root.title("Agentic Kali")
+
+    def _estimate_seconds(self, actions: list[str]) -> int:
+        estimates = {
+            "ping_check": 5,
+            "nmap_top_ports": 180,
+            "whatweb": 45,
+            "httpx_probe": 45,
+            "nuclei_safe": 240,
+        }
+        return max(30, sum(estimates.get(action, 60) for action in actions))
+
+    def _start_countdown(self, seconds: int) -> None:
+        self.countdown_remaining = seconds
+        self._tick_countdown()
+
+    def _tick_countdown(self) -> None:
+        mins, secs = divmod(max(0, self.countdown_remaining), 60)
+        self.status.set(f"Running tests... estimated time left {mins:02d}:{secs:02d}")
+        if self.countdown_remaining <= 0:
+            self.status.set("Running tests... finishing up")
+            self.countdown_after = None
+            return
+        self.countdown_remaining -= 1
+        self.countdown_after = self.root.after(1000, self._tick_countdown)
 
     def _scope_from_consent(self, command: str, existing: Scope) -> Scope | None:
         lower = command.lower()
@@ -520,15 +570,20 @@ class FloatingPrompt:
         self.events.append(event)
         self._append_preview_event(event)
 
-    def show_preview(self) -> None:
+    def show_preview(self, attached: bool = False) -> None:
         if self.preview and self.preview.winfo_exists():
+            if attached:
+                self._attach_preview()
             self.preview.lift()
             return
 
         self.preview = tk.Toplevel(self.root)
-        self.preview.title("Agentic Kali Activity")
+        self.preview.title("Agentic Kali Live View")
         self.preview.attributes("-topmost", True)
-        self.preview.geometry("680x520+480+40")
+        if attached:
+            self._attach_preview()
+        else:
+            self.preview.geometry("680x520+480+40")
         frame = tk.Frame(self.preview)
         frame.pack(fill="both", expand=True, padx=8, pady=8)
         self.preview_text = tk.Text(frame, wrap="word")
@@ -537,6 +592,12 @@ class FloatingPrompt:
         self.preview_text.pack(side="left", fill="both", expand=True)
         preview_scroll.pack(side="right", fill="y")
         self._refresh_preview()
+
+    def _attach_preview(self) -> None:
+        self.root.update_idletasks()
+        x = self.root.winfo_x() + self.root.winfo_width()
+        y = self.root.winfo_y()
+        self.preview.geometry(f"{self.root.winfo_width()}x{self.root.winfo_height()}+{x}+{y}")
 
     def _refresh_preview(self) -> None:
         if not self.preview_text:
