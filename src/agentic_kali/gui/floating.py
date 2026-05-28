@@ -200,10 +200,10 @@ class FloatingPrompt:
             report["report_files"] = files
             append_history(report)
             if self.stop_requested:
-                self._say("Agent Kal", f"Stopped. I saved partial results here: {files['markdown']}")
+                self._say("Agent Kal", self._summarize_results(report, files, stopped=True))
                 self.status.set("Stopped")
             else:
-                self._say("Agent Kal", f"Finished. I saved the report here: {files['markdown']}")
+                self._say("Agent Kal", self._summarize_results(report, files))
                 self.status.set(f"Done: {files['markdown']}")
             self._exit_run_mode()
         except Exception as exc:
@@ -219,6 +219,55 @@ class FloatingPrompt:
         if command.lower().strip() in {"yes", "y", "do it", "just open", "just open it", "open it"}:
             return self.pending_launch
         return None
+
+    def _summarize_results(self, report: dict, files: dict[str, str], stopped: bool = False) -> str:
+        findings = report.get("findings", [])
+        if not findings:
+            intro = "Stopped. " if stopped else "Finished. "
+            return (
+                f"{intro}I did not find reportable issues in the completed checks.\n"
+                "Next steps:\n"
+                "- Confirm the target and scope are correct.\n"
+                "- Try Web Fingerprint or Safe Vulnerability Check if you only ran quick recon.\n"
+                "- Review the report for raw tool output.\n\n"
+                f"Report saved here: {files['markdown']}"
+            )
+
+        counts: dict[str, int] = {}
+        for finding in findings:
+            severity = finding.get("severity", "info")
+            counts[severity] = counts.get(severity, 0) + 1
+        severity_text = ", ".join(f"{level}: {count}" for level, count in sorted(counts.items()))
+        top = findings[:3]
+        lines = ["Stopped with partial results." if stopped else "Finished. Here is what I found:", f"Findings by severity: {severity_text}"]
+        lines.append("Key findings:")
+        for finding in top:
+            title = finding.get("title", "Finding")
+            target = finding.get("target", "target")
+            severity = finding.get("severity", "info")
+            metadata = finding.get("metadata", {})
+            detail = self._finding_detail(metadata) or "See report evidence for tool output."
+            lines.append(f"- {title} on {target} ({severity}): {detail}")
+        lines.extend(
+            [
+                "Recommended next steps:",
+                "- Prioritize any medium/high findings first.",
+                "- Patch or harden exposed services, then rerun the same test.",
+                "- If this was recon only, follow with Safe Vulnerability Check inside the same scope.",
+                f"Report saved here: {files['markdown']}",
+            ]
+        )
+        return "\n".join(lines)
+
+    def _finding_detail(self, metadata: dict) -> str:
+        ports = metadata.get("open_ports") if isinstance(metadata, dict) else None
+        if ports:
+            open_ports = [str(item.get("port")) for item in ports if item.get("state") == "open"]
+            if open_ports:
+                return f"Open ports found: {', '.join(open_ports)}."
+        if isinstance(metadata, dict) and metadata:
+            return "Structured metadata was captured for review."
+        return ""
 
     def _handle_launch(self, launch: LaunchRequest) -> None:
         self.pending_launch = launch
