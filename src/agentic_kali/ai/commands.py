@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agentic_kali.core.planner import ALL_ACTIONS
+from agentic_kali.policy.security_settings import ALL_ACTIONS
 
 
 KEYWORDS = {

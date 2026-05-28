@@ -1,11 +1,7 @@
 from __future__ import annotations
 
 from agentic_kali.policy.models import Action, Scope
-
-
-SAFE_RECON_ACTIONS = ("ping_check", "nmap_top_ports", "whatweb", "httpx_probe", "nuclei_safe")
-INTRUSIVE_ACTIONS = ("sqlmap_safe",)
-ALL_ACTIONS = (*SAFE_RECON_ACTIONS, *INTRUSIVE_ACTIONS)
+from agentic_kali.policy.security_settings import ALL_ACTIONS, INTRUSIVE_ACTIONS, SAFE_RECON_ACTIONS
 
 
 def build_plan(scope: Scope) -> list[Action]:

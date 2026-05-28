@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agentic_kali.core.planner import ALL_ACTIONS, INTRUSIVE_ACTIONS
+from agentic_kali.policy.security_settings import ALL_ACTIONS, INTRUSIVE_ACTIONS
 from agentic_kali.ai.provider import AIProvider
 from agentic_kali.ai.commands import actions_from_command
 from agentic_kali.evidence.store import EvidenceStore

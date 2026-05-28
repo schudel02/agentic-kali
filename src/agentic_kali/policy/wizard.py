@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agentic_kali.core.planner import SAFE_RECON_ACTIONS
+from agentic_kali.policy.security_settings import SAFE_RECON_ACTIONS
 from agentic_kali.policy.models import ApprovalMode, Scope
 
 

@@ -12,7 +12,7 @@ from tkinter import messagebox
 from typing import Any
 
 from agentic_kali.core.orchestrator import Orchestrator
-from agentic_kali.core.planner import ALL_ACTIONS, SAFE_RECON_ACTIONS
+from agentic_kali.policy.security_settings import ALL_ACTIONS, SAFE_RECON_ACTIONS
 from agentic_kali.ai.commands import actions_from_command
 from agentic_kali.ai.request import extract_target, summarize_request, wants_tool_run, wants_tool_run_intent
 from agentic_kali.ai.chat import ChatSession

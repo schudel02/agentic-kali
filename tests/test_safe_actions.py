@@ -1,4 +1,4 @@
-from agentic_kali.core.planner import SAFE_RECON_ACTIONS
+from agentic_kali.policy.security_settings import SAFE_RECON_ACTIONS
 
 
 def test_nuclei_safe_is_allowlisted():

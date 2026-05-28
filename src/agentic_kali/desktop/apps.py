@@ -7,6 +7,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from agentic_kali.policy.security_settings import HIGH_RISK_TOOLS, PRIVILEGED_TOOLS, TERMINAL_TOOLS
+
 URL_RE = re.compile(r"\b((?:https?://)?(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:/[^\s]*)?)\b")
 
 ALIASES = {
@@ -20,9 +22,6 @@ ALIASES = {
     "firefox": "firefox",
 }
 
-HIGH_RISK = {"setoolkit", "msfconsole", "hydra", "sqlmap"}
-PRIVILEGED = {"wireshark", "setoolkit"}
-TERMINAL_TOOLS = {"setoolkit", "msfconsole"}
 KNOWN_TOOLS = set(ALIASES.values()) | {"qterminal", "x-terminal-emulator", "terminal"}
 
 
@@ -67,7 +66,7 @@ def parse_launch_request(text: str) -> LaunchRequest | None:
     if not command:
         return None
 
-    risk = "approval_required" if command in HIGH_RISK else "normal"
+    risk = "approval_required" if command in HIGH_RISK_TOOLS else "normal"
     if command in {"firefox", "xdg-open"} and url:
         args = (_normalize_url(url),)
     elif command == parts[0]:
@@ -79,7 +78,7 @@ def parse_launch_request(text: str) -> LaunchRequest | None:
         command=command,
         risk=risk,
         args=args,
-        privileged=command in PRIVILEGED,
+        privileged=command in PRIVILEGED_TOOLS,
         terminal=terminal or command in TERMINAL_TOOLS,
         requires_tools_open=command not in KNOWN_TOOLS,
     )
