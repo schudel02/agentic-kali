@@ -8,6 +8,14 @@ from agentic_kali.reporting.severity import rank_metadata
 from agentic_kali.tools.parsers import parse_httpx, parse_nmap, parse_whatweb
 from agentic_kali.tools.runner import run_command
 
+TOOL_DESCRIPTIONS = {
+    "ping_check": "Validating the target is inside the approved workflow.",
+    "nmap_top_ports": "Opening nmap and checking common exposed services.",
+    "whatweb": "Opening WhatWeb and fingerprinting web technology.",
+    "httpx_probe": "Opening httpx and probing HTTP titles, status codes, and technologies.",
+    "nuclei_safe": "Opening nuclei and running low-risk exposure checks.",
+}
+
 
 class ToolRegistry:
     def __init__(self, evidence: EvidenceStore, should_stop: Callable[[], bool] | None = None) -> None:
@@ -15,6 +23,7 @@ class ToolRegistry:
         self.should_stop = should_stop or (lambda: False)
 
     def run(self, action: Action) -> None:
+        self.evidence.log("tool.description", {"action": action.name, "target": action.target, "description": TOOL_DESCRIPTIONS.get(action.name, "Running selected tool.")})
         if action.name == "ping_check":
             self._ping_check(action)
             return

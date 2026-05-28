@@ -41,9 +41,11 @@ class Orchestrator:
             self.evidence.log("policy.decision", decision.model_dump())
             if decision.approval_required and request_manual_approval(action):
                 self.evidence.log("approval.manual", {"action": action.name, "target": action.target})
+                self.evidence.log("action.started", {"action": action.name, "target": action.target})
                 self.tools.run(action)
                 continue
             if decision.allowed:
+                self.evidence.log("action.started", {"action": action.name, "target": action.target})
                 self.tools.run(action)
 
         report = build_report(self.scope, self.evidence)

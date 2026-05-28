@@ -4,6 +4,7 @@ import json
 import re
 import threading
 import tkinter as tk
+from datetime import UTC, datetime
 from pathlib import Path
 from tkinter import messagebox
 from typing import Any
@@ -47,6 +48,7 @@ class FloatingPrompt:
         self.chat.tag_configure("agent", justify="left", lmargin1=8, lmargin2=8, rmargin=80)
         self.chat.tag_configure("user_label", justify="right", font=("TkDefaultFont", 10, "bold"))
         self.chat.tag_configure("agent_label", justify="left", font=("TkDefaultFont", 10, "bold"), foreground="#174ea6")
+        self.chat.tag_configure("activity_note", justify="left", font=("TkDefaultFont", 9, "italic"), foreground="#555555", lmargin1=18, lmargin2=18, rmargin=80)
         self.chat.tag_configure("code", background="#eeeeee", font=("Courier", 10), lmargin1=18, lmargin2=18, rmargin=18)
         self.chat.tag_configure("code_prefix", background="#eeeeee", foreground="#174ea6", font=("Courier", 10, "bold"))
         self.chat.bind("<Key>", self._chat_keypress)
@@ -147,11 +149,13 @@ class FloatingPrompt:
             launch = parse_launch_request(command) or self._continued_launch(command)
             if launch:
                 self._set_thinking("")
+                self._gui_event("gui.launch.requested", {"tool": launch.command, "display_name": launch.display_name})
                 self._handle_launch(launch)
                 return
             browser_request = parse_browser_request(command)
             if browser_request:
                 self._set_thinking("")
+                self._gui_event("gui.browser.requested", {"action": browser_request.action, "value": browser_request.value})
                 self._handle_browser(browser_request)
                 return
             reply = self.session.reply(command)
@@ -172,6 +176,8 @@ class FloatingPrompt:
                 scope = scope.model_copy(update={"targets": [target]})
             actions = actions_from_command(command, scope.allowed_actions)
             self._say("Agent Kal", summarize_request(command, actions, target))
+            self._note(self._run_description(actions, target or ", ".join(scope.targets)))
+            self._gui_event("run.preparing", {"target": target or scope.targets, "actions": actions})
             self.status.set("Running tests...")
             report = Orchestrator(
                 scope,
@@ -212,6 +218,7 @@ class FloatingPrompt:
                 if launch.privileged:
                     self._say("Agent Kal", "Kali may ask for your password in a system prompt.")
                 ok, output = launch_program(launch.command, launch.args, launch.privileged)
+                self._gui_event("gui.launch.completed", {"tool": launch.command, "ok": ok, "message": output})
                 self.pending_launch = None if ok else launch
                 self._say("Agent Kal", output)
                 self.status.set("" if ok else "Launch failed")
@@ -226,6 +233,7 @@ class FloatingPrompt:
                 self.status.set("")
                 return
         ok, output = launch_program(launch.command, launch.args, launch.privileged)
+        self._gui_event("gui.launch.completed", {"tool": launch.command, "ok": ok, "message": output})
         self.pending_launch = None if ok else launch
         self._say("Agent Kal", output)
         self.status.set("" if ok else "Launch failed")
@@ -243,8 +251,20 @@ class FloatingPrompt:
         else:
             self._say("Agent Kal", f"Admin Approved Mode: browser action {browser_request.action}.")
         ok, output = run_browser_request(browser_request)
+        self._gui_event("gui.browser.completed", {"action": browser_request.action, "ok": ok, "message": output})
         self._say("Agent Kal", output)
         self.status.set("" if ok else "Browser action failed")
+
+    def _run_description(self, actions: list[str], target: str) -> str:
+        if "nmap_top_ports" in actions:
+            return f"Opening nmap and running safe service discovery on {target}."
+        if "whatweb" in actions:
+            return f"Opening WhatWeb and fingerprinting web technologies on {target}."
+        if "httpx_probe" in actions:
+            return f"Opening httpx and checking web response details on {target}."
+        if "nuclei_safe" in actions:
+            return f"Opening nuclei and running low-risk checks on {target}."
+        return f"Preparing scoped safe checks for {target}."
 
     def _scope_from_consent(self, command: str, existing: Scope) -> Scope | None:
         lower = command.lower()
@@ -272,6 +292,14 @@ class FloatingPrompt:
     def _say(self, speaker: str, message: str, animated: bool = False) -> None:
         self.root.after(0, lambda: self._enqueue_say(speaker, message, animated))
 
+    def _note(self, message: str) -> None:
+        self.root.after(0, lambda: self._enqueue_note(message))
+
+    def _enqueue_note(self, message: str) -> None:
+        self.say_queue.append(("", message + "\n\n", "activity_note", "activity_note", False))
+        if not self.speaking:
+            self._drain_say_queue()
+
     def _enqueue_say(self, speaker: str, message: str, animated: bool = False) -> None:
         if speaker == "Agent Kal":
             animated = True
@@ -290,7 +318,8 @@ class FloatingPrompt:
             return
         self.speaking = True
         speaker, message, tag, label_tag, animated = self.say_queue.pop(0)
-        self.chat.insert("end", f"{speaker}: ", label_tag)
+        if speaker:
+            self.chat.insert("end", f"{speaker}: ", label_tag)
         self.type_chars_on_page = 0
         if animated:
             if "```" in message or self._has_command_lines(message):
@@ -469,6 +498,9 @@ class FloatingPrompt:
     def _append_event(self, event: dict[str, Any]) -> None:
         self.root.after(0, lambda: self._record_event(event))
 
+    def _gui_event(self, event: str, data: dict[str, Any]) -> None:
+        self._append_event({"time": datetime.now(UTC).isoformat(), "event": event, "data": data})
+
     def _record_event(self, event: dict[str, Any]) -> None:
         self.events.append(event)
         self._append_preview_event(event)
@@ -514,6 +546,8 @@ class FloatingPrompt:
         if not self.preview_text:
             return
         try:
+            if self.preview_text.get("1.0", "end").strip() == "No activity yet.":
+                self.preview_text.delete("1.0", "end")
             self.preview_text.insert("end", f"[{event['time']}] {event['event']}\n")
             self.preview_text.insert("end", json.dumps(event["data"], indent=2))
             self.preview_text.insert("end", "\n\n")
