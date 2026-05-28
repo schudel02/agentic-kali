@@ -49,6 +49,7 @@ class FloatingPrompt:
         self.chat_menu = tk.Menu(self.root, tearoff=0)
         self.chat_menu.add_command(label="Copy", command=self._copy_selection)
         self.chat_menu.add_command(label="Select All", command=self._select_all_chat)
+        self.admin_mode = False
         self._say(
             "Agent Kal",
             "Hello James, I'm Agent Kal. Tell me what authorized system you want to test, and I'll choose the Kali tools, run safe checks, and explain what I find.",
@@ -91,7 +92,6 @@ class FloatingPrompt:
         self.stop_requested = False
         self.type_chars_on_page = 0
         self.pending_launch: LaunchRequest | None = None
-        self.admin_mode = False
         self.root.after(300, self._focus_prompt)
 
     def run(self) -> None:
