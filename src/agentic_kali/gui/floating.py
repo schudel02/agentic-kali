@@ -41,7 +41,6 @@ class FloatingPrompt:
 
         self.prompt = tk.Entry(self.root)
         self.prompt.pack(fill="x", padx=10, pady=(0, 6))
-        self.prompt.insert(0, "Help me run a pentest on 127.0.0.1")
         self.prompt.bind("<Return>", lambda _event: self.run())
 
         self.status = tk.StringVar(value="Ready")
