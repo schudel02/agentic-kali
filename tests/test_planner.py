@@ -23,3 +23,16 @@ def test_planner_uses_command_keywords():
     )
     actions = AIPlanner(scope, EvidenceStore(), command="scan ports").propose_next_actions()
     assert [action.name for action in actions] == ["nmap_top_ports"]
+
+
+def test_planner_marks_sqlmap_safe_intrusive():
+    scope = Scope(
+        engagement_name="x",
+        targets=["127.0.0.1"],
+        allowed_actions=["sqlmap_safe"],
+        signed_permission=True,
+        intrusive_allowed=True,
+    )
+    actions = AIPlanner(scope, EvidenceStore(), command="sql injection testing").propose_next_actions()
+    assert [action.name for action in actions] == ["sqlmap_safe"]
+    assert actions[0].intrusive

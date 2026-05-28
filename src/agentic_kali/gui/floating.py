@@ -12,7 +12,7 @@ from tkinter import messagebox
 from typing import Any
 
 from agentic_kali.core.orchestrator import Orchestrator
-from agentic_kali.core.planner import SAFE_RECON_ACTIONS
+from agentic_kali.core.planner import ALL_ACTIONS, SAFE_RECON_ACTIONS
 from agentic_kali.ai.commands import actions_from_command
 from agentic_kali.ai.request import extract_target, summarize_request, wants_tool_run, wants_tool_run_intent
 from agentic_kali.ai.chat import ChatSession
@@ -191,12 +191,17 @@ class FloatingPrompt:
                 self._handle_build_request(build_request)
                 return
             target = extract_target(command) or self.last_target
+            if not target and self._is_intrusive_request(command):
+                self._set_thinking("")
+                self._say("Agent Kal", "Target?")
+                self.status.set("Target required")
+                return
             if target and self._wants_run(command, target):
                 self.last_target = target
                 self._set_thinking("")
                 scope = self._ensure_consent(scope, target)
                 if not scope:
-                    self._say("Agent Kal", "I paused the test because written consent was not confirmed.")
+                    self._say("Agent Kal", "Auth required.")
                     self.status.set("Consent required")
                     return
                 self._run_scoped_tests(command, scope, target)
@@ -231,7 +236,7 @@ class FloatingPrompt:
                 self.last_target = target
             scope = self._ensure_consent(scope, target)
             if not scope:
-                self._say("Agent Kal", "I paused the test because written consent was not confirmed.")
+                self._say("Agent Kal", "Auth required.")
                 self.status.set("Consent required")
                 return
             if target:
@@ -278,6 +283,10 @@ class FloatingPrompt:
         if command.lower().strip() in {"yes", "y", "do it", "just open", "just open it", "open it"}:
             return self.pending_launch
         return None
+
+    def _is_intrusive_request(self, command: str) -> bool:
+        text = command.lower()
+        return any(phrase in text for phrase in ("sql injection", "sqli", "sqlmap", "invasive", "intrusive"))
 
     def _summarize_results(self, report: dict, files: dict[str, str], stopped: bool = False) -> str:
         findings = report.get("findings", [])
@@ -530,6 +539,8 @@ class FloatingPrompt:
             return f"Opening httpx and checking web response details on {target}."
         if "nuclei_safe" in actions:
             return f"Opening nuclei and running low-risk checks on {target}."
+        if "sqlmap_safe" in actions:
+            return f"Opening sqlmap in conservative mode for SQL injection checks on {target}."
         return f"Preparing scoped safe checks for {target}."
 
     def _enter_run_mode(self, actions: list[str]) -> None:
@@ -559,6 +570,7 @@ class FloatingPrompt:
             "whatweb": 45,
             "httpx_probe": 45,
             "nuclei_safe": 240,
+            "sqlmap_safe": 240,
         }
         return max(30, sum(estimates.get(action, 60) for action in actions))
 
@@ -587,7 +599,7 @@ class FloatingPrompt:
         scope = existing.model_copy(
             update={
                 "targets": targets,
-                "allowed_actions": list(dict.fromkeys([*existing.allowed_actions, *SAFE_RECON_ACTIONS])),
+                "allowed_actions": list(dict.fromkeys([*existing.allowed_actions, *ALL_ACTIONS])),
                 "approval_mode": ApprovalMode.RECON_ONLY,
                 "intrusive_allowed": True,
                 "signed_permission": True,
@@ -601,7 +613,13 @@ class FloatingPrompt:
         requested_targets = [target] if target else scope.targets
         needs_consent = not scope.signed_permission or any(item not in scope.targets for item in requested_targets)
         if not needs_consent:
-            return scope.model_copy(update={"targets": requested_targets or scope.targets}) if target else scope
+            return scope.model_copy(
+                update={
+                    "targets": requested_targets or scope.targets,
+                    "allowed_actions": list(dict.fromkeys([*scope.allowed_actions, *ALL_ACTIONS])),
+                    "intrusive_allowed": True,
+                }
+            ) if target else scope
 
         target_text = ", ".join(requested_targets)
         if not self._ask_written_consent(target_text):
@@ -609,7 +627,7 @@ class FloatingPrompt:
         updated = scope.model_copy(
             update={
                 "targets": list(dict.fromkeys([*scope.targets, *requested_targets])),
-                "allowed_actions": list(dict.fromkeys([*scope.allowed_actions, *SAFE_RECON_ACTIONS])),
+                "allowed_actions": list(dict.fromkeys([*scope.allowed_actions, *ALL_ACTIONS])),
                 "approval_mode": ApprovalMode.RECON_ONLY,
                 "intrusive_allowed": True,
                 "signed_permission": True,
@@ -631,7 +649,7 @@ class FloatingPrompt:
             window.geometry("560x360+120+120")
             window.grab_set()
 
-            tk.Label(window, text="Do you have written permission to perform these tests?", font=("TkDefaultFont", 12, "bold"), wraplength=520).pack(fill="x", padx=16, pady=(16, 8))
+            tk.Label(window, text="Authorization Required", font=("TkDefaultFont", 12, "bold"), wraplength=520).pack(fill="x", padx=16, pady=(16, 8))
             tk.Label(window, text=f"Target host/scope: {target_text}", wraplength=520, justify="left").pack(fill="x", padx=16, pady=(0, 10))
             tk.Label(
                 window,
@@ -646,13 +664,13 @@ class FloatingPrompt:
                 justify="left",
             ).pack(fill="x", padx=16, pady=(0, 12))
 
-            tk.Label(window, text="Type AUTHORIZED to proceed with testing:", anchor="w").pack(fill="x", padx=16)
+            tk.Label(window, text="You must have full written authorization to proceed with this test. Type AUTHORIZE:", anchor="w", wraplength=520).pack(fill="x", padx=16)
             token = tk.Entry(window)
             token.pack(fill="x", padx=16, pady=(4, 12))
             token.focus_set()
 
             def approve() -> None:
-                if token.get().strip() != "AUTHORIZED":
+                if token.get().strip() != "AUTHORIZE":
                     messagebox.showerror("Authorization Required", "must provide auth to proceed", parent=window)
                     token.selection_range(0, "end")
                     token.focus_set()
@@ -1037,6 +1055,7 @@ class FloatingPrompt:
             "whatweb": "Opening WhatWeb. WhatWeb identifies website software and plugins so the operator can understand what technologies may need patching.",
             "httpx_probe": "Opening httpx. httpx checks web responses, page titles, and visible technologies to map what the website exposes.",
             "nuclei_safe": "Opening nuclei with low-risk templates. Nuclei compares the target against known safe checks for common exposures and misconfigurations.",
+            "sqlmap_safe": "Opening sqlmap in conservative mode. sqlmap checks whether web inputs appear vulnerable to SQL injection without dumping data.",
         }
         return f"{explanations.get(action, 'Running the selected Kali tool.')} Target: {target}."
 

@@ -12,3 +12,7 @@ def test_actions_from_command_falls_back_to_allowed_safe_actions():
 def test_domain_mapping_selects_web_mapping_actions():
     assert actions_from_command("proceed with domain mapping", ["whatweb", "httpx_probe"]) == ["whatweb", "httpx_probe"]
 
+
+def test_sql_injection_selects_sqlmap_safe():
+    assert actions_from_command("sql injection testing", ["sqlmap_safe", "nmap_top_ports"]) == ["sqlmap_safe"]
+

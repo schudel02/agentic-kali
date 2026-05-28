@@ -14,6 +14,7 @@ TOOL_DESCRIPTIONS = {
     "whatweb": "Opening WhatWeb and fingerprinting web technology.",
     "httpx_probe": "Opening httpx and probing HTTP titles, status codes, and technologies.",
     "nuclei_safe": "Opening nuclei and running low-risk exposure checks.",
+    "sqlmap_safe": "Opening sqlmap in conservative mode to check for SQL injection indicators.",
 }
 
 
@@ -38,6 +39,9 @@ class ToolRegistry:
             return
         if action.name == "nuclei_safe":
             self._nuclei_safe(action)
+            return
+        if action.name == "sqlmap_safe":
+            self._sqlmap_safe(action)
             return
 
         self.evidence.log("tool.skipped", {"action": action.name, "reason": "unknown tool"})
@@ -82,6 +86,15 @@ class ToolRegistry:
         )
         self.evidence.log("tool.nuclei_safe", result.as_dict())
         self._record_result("Nuclei safe templates", action, result.as_dict())
+
+    def _sqlmap_safe(self, action: Action) -> None:
+        result = run_command(
+            ["sqlmap", "-u", action.target, "--batch", "--risk=1", "--level=1", "--smart"],
+            timeout=240,
+            should_stop=self.should_stop,
+        )
+        self.evidence.log("tool.sqlmap_safe", result.as_dict())
+        self._record_result("SQL injection safe check", action, result.as_dict())
 
     def _record_result(self, title: str, action: Action, result: dict, parser=None) -> None:
         metadata = {}

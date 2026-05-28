@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agentic_kali.core.planner import SAFE_RECON_ACTIONS
+from agentic_kali.core.planner import ALL_ACTIONS
 
 
 KEYWORDS = {
@@ -9,6 +9,7 @@ KEYWORDS = {
     "whatweb": ("whatweb", "fingerprint", "web", "mapping", "map", "domain"),
     "httpx_probe": ("httpx", "title", "tech", "http", "mapping", "map", "domain"),
     "nuclei_safe": ("nuclei", "template", "exposure", "misconfig"),
+    "sqlmap_safe": ("sql injection", "sqli", "sqlmap"),
 }
 
 
@@ -21,5 +22,5 @@ def actions_from_command(command: str, allowed_actions: list[str]) -> list[str]:
     ]
     if selected:
         return selected
-    return [action for action in SAFE_RECON_ACTIONS if action in allowed_actions]
+    return [action for action in ALL_ACTIONS if action in allowed_actions]
 

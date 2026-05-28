@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agentic_kali.core.planner import SAFE_RECON_ACTIONS
+from agentic_kali.core.planner import ALL_ACTIONS, INTRUSIVE_ACTIONS, SAFE_RECON_ACTIONS
 from agentic_kali.ai.provider import AIProvider
 from agentic_kali.ai.commands import actions_from_command
 from agentic_kali.evidence.store import EvidenceStore
@@ -19,13 +19,13 @@ class AIPlanner:
         allowed_names = [
             name
             for name in selected
-            if name in SAFE_RECON_ACTIONS and name in self.scope.allowed_actions
+            if name in ALL_ACTIONS and name in self.scope.allowed_actions
         ]
 
         proposed: list[Action] = []
         for target in self.scope.targets:
             for name in allowed_names:
-                proposed.append(Action(name=name, target=target, intrusive=False))
+                proposed.append(Action(name=name, target=target, intrusive=name in INTRUSIVE_ACTIONS))
 
         self.evidence.log(
             "ai.plan.proposed",

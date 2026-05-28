@@ -21,3 +21,4 @@ def test_wants_tool_run_intent_without_target():
     assert wants_tool_run_intent("run the next test")
     assert wants_tool_run_intent("continue")
     assert wants_tool_run_intent("map it")
+    assert wants_tool_run_intent("sql injection testing")

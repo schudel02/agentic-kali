@@ -23,6 +23,13 @@ def test_natural_preview_explains_nmap_action():
     assert "doors into a system" in text
 
 
+def test_natural_preview_explains_sqlmap_action():
+    prompt = object.__new__(FloatingPrompt)
+    text = prompt._natural_event_text({"event": "action.started", "data": {"action": "sqlmap_safe", "target": "example.com"}})
+    assert "Opening sqlmap" in text
+    assert "without dumping data" in text
+
+
 def test_preview_raw_mode_keeps_event_json():
     prompt = object.__new__(FloatingPrompt)
     prompt.preview_mode = _Mode("raw")
