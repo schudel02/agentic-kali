@@ -493,7 +493,12 @@ class FloatingPrompt:
             token.focus_set()
 
             def approve() -> None:
-                result["approved"] = token.get().strip() == "AUTHORIZED"
+                if token.get().strip() != "AUTHORIZED":
+                    messagebox.showerror("Authorization Required", "must provide auth to proceed", parent=window)
+                    token.selection_range(0, "end")
+                    token.focus_set()
+                    return
+                result["approved"] = True
                 window.destroy()
                 done.set()
 
@@ -508,10 +513,6 @@ class FloatingPrompt:
             tk.Button(buttons, text="Cancel", command=cancel).pack(side="right")
             token.bind("<Return>", lambda _event: approve())
             window.protocol("WM_DELETE_WINDOW", cancel)
-            self._say(
-                "Agent Kal",
-                "Before I run tests, I need one written-consent confirmation for this host. Type AUTHORIZED in the confirmation window to continue.",
-            )
 
         self.root.after(0, ask)
         done.wait()
@@ -567,10 +568,13 @@ class FloatingPrompt:
         if index >= len(text):
             self._drain_say_queue()
             return
-        chunk = text[index : index + 4]
+        chunk = text[index : index + 2]
         self.chat.insert("end", chunk, tag)
         self.chat.see("end")
-        self.root.after(15, lambda: self._type_text(text, index + len(chunk), tag))
+        delay = 45
+        if chunk in ".!?\n":
+            delay = 180
+        self.root.after(delay, lambda: self._type_text(text, index + len(chunk), tag))
 
     def _insert_message_text(self, text: str, tag: str) -> None:
         for part in self._split_code_blocks(text):
