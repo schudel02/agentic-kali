@@ -62,6 +62,14 @@ class FloatingPrompt:
         self.prompt.pack(side="left", fill="x", expand=True, ipady=6)
         self.prompt.bind("<Return>", lambda _event: self.run())
         self.prompt.bind("<Button-1>", lambda _event: self.prompt.focus_set())
+        self.prompt.bind("<Control-v>", self._paste_prompt)
+        self.prompt.bind("<Control-V>", self._paste_prompt)
+        self.prompt.bind("<Button-2>", self._paste_prompt)
+        self.prompt.bind("<Button-3>", self._show_prompt_menu)
+        self.prompt_menu = tk.Menu(self.root, tearoff=0)
+        self.prompt_menu.add_command(label="Paste", command=self._paste_prompt)
+        self.prompt_menu.add_command(label="Copy", command=self._copy_prompt_selection)
+        self.prompt_menu.add_command(label="Select All", command=self._select_all_prompt)
         tk.Button(input_frame, text="Send", command=self.run).pack(side="right", padx=(8, 0))
 
         self.status = tk.StringVar(value="")
@@ -323,6 +331,32 @@ class FloatingPrompt:
 
     def _show_chat_menu(self, event) -> str:
         self.chat_menu.tk_popup(event.x_root, event.y_root)
+        return "break"
+
+    def _paste_prompt(self, event=None) -> str:
+        try:
+            self.prompt.insert("insert", self.root.clipboard_get())
+        except tk.TclError:
+            pass
+        return "break"
+
+    def _copy_prompt_selection(self, event=None) -> str:
+        try:
+            selected = self.prompt.selection_get()
+        except tk.TclError:
+            selected = ""
+        if selected:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selected)
+        return "break"
+
+    def _select_all_prompt(self, event=None) -> str:
+        self.prompt.selection_range(0, "end")
+        self.prompt.icursor("end")
+        return "break"
+
+    def _show_prompt_menu(self, event) -> str:
+        self.prompt_menu.tk_popup(event.x_root, event.y_root)
         return "break"
 
     def _last_user_message(self) -> str:
