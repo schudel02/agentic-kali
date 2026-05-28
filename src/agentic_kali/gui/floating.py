@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
+import subprocess
 import threading
 import tkinter as tk
 from datetime import UTC, datetime
@@ -26,6 +28,7 @@ from agentic_kali.reporting.writer import write_reports
 
 
 DEFAULT_SCOPE = Path("/etc/agentic-kali/scope.json")
+REPORTS_DIR = Path("reports")
 COMMAND_PREFIXES = ("sudo", "cd", "git", "bash", "python", "python3", "pip", "pip3", "nmap", "curl", "wget", "apt", "systemctl")
 
 
@@ -99,6 +102,7 @@ class FloatingPrompt:
         frame.pack(fill="x", padx=10, pady=8)
         tk.Button(frame, text="Stop", command=self.stop).pack(side="left")
         tk.Button(frame, text="Preview", command=self.show_preview).pack(side="left", padx=8)
+        tk.Button(frame, text="Reports", command=self.open_reports).pack(side="left", padx=8)
         tk.Button(frame, text="Watch Mode", command=self.show_watch_mode).pack(side="left", padx=8)
         tk.Button(frame, text="Settings", command=self.show_settings).pack(side="left", padx=8)
         tk.Button(frame, text="Quit", command=self.root.destroy).pack(side="right")
@@ -625,6 +629,15 @@ class FloatingPrompt:
             messagebox.showinfo("Watch Mode", f"Status: {status}\n\nPlan:\n{plan}")
         except Exception as exc:
             messagebox.showerror("Watch Mode", str(exc))
+
+    def open_reports(self) -> None:
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        opener = shutil.which("xdg-open") or shutil.which("thunar")
+        if not opener:
+            messagebox.showerror("Reports", f"Reports folder: {REPORTS_DIR.resolve()}")
+            return
+        subprocess.Popen([opener, str(REPORTS_DIR.resolve())])
+        self._gui_event("gui.reports.opened", {"path": str(REPORTS_DIR.resolve())})
 
     def _save_scope(self, fields: dict[str, tk.Entry]) -> None:
         scope = Scope(
