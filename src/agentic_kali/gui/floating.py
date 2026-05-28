@@ -155,20 +155,12 @@ class FloatingPrompt:
         if index >= len(text):
             self._focus_prompt()
             return
-        if not self._chat_at_bottom():
-            self.root.after(250, lambda: self._type_text(text, index))
-            return
         self.chat.configure(state="normal")
-        chunk = text[index : index + 2]
+        chunk = text[index : index + 4]
         self.chat.insert("end", chunk)
+        self.chat.see("end")
         self.chat.configure(state="disabled")
-        self.root.after(45, lambda: self._type_text(text, index + len(chunk)))
-
-    def _chat_at_bottom(self) -> bool:
-        try:
-            return self.chat.yview()[1] >= 0.98
-        except tk.TclError:
-            return True
+        self.root.after(15, lambda: self._type_text(text, index + len(chunk)))
 
     def _focus_prompt(self) -> None:
         try:
