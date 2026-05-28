@@ -42,6 +42,8 @@ class FloatingPrompt:
         self.chat_scroll.pack(side="right", fill="y")
         self.chat.tag_configure("user", justify="right", lmargin1=120, lmargin2=120, rmargin=12)
         self.chat.tag_configure("agent", justify="left", lmargin1=8, lmargin2=8, rmargin=80)
+        self.chat.tag_configure("user_label", justify="right", font=("TkDefaultFont", 10, "bold"))
+        self.chat.tag_configure("agent_label", justify="left", font=("TkDefaultFont", 10, "bold"), foreground="#174ea6")
         self.chat.tag_configure("code", background="#eeeeee", font=("Courier", 10), lmargin1=18, lmargin2=18, rmargin=18)
         self.chat.bind("<Key>", self._chat_keypress)
         self.chat.bind("<Control-c>", self._copy_selection)
@@ -51,7 +53,7 @@ class FloatingPrompt:
         self.chat_menu.add_command(label="Select All", command=self._select_all_chat)
         self.admin_mode = False
         self.speaking = False
-        self.say_queue: list[tuple[str, str, str, bool]] = []
+        self.say_queue: list[tuple[str, str, str, str, bool]] = []
         self._say(
             "Agent Kal",
             "Hello James, I'm Agent Kal. Tell me what authorized system you want to test, and I'll choose the Kali tools, run safe checks, and explain what I find.",
@@ -244,7 +246,8 @@ class FloatingPrompt:
             if self.admin_mode:
                 speaker = "Agent Kal (Admin Mode)"
         tag = "user" if speaker == "You" else "agent"
-        self.say_queue.append((speaker, message, tag, animated))
+        label_tag = "user_label" if speaker == "You" else "agent_label"
+        self.say_queue.append((speaker, message, tag, label_tag, animated))
         if not self.speaking:
             self._drain_say_queue()
 
@@ -254,8 +257,8 @@ class FloatingPrompt:
             self._focus_prompt()
             return
         self.speaking = True
-        speaker, message, tag, animated = self.say_queue.pop(0)
-        self.chat.insert("end", f"{speaker}: ", tag)
+        speaker, message, tag, label_tag, animated = self.say_queue.pop(0)
+        self.chat.insert("end", f"{speaker}: ", label_tag)
         self.type_chars_on_page = 0
         if animated:
             if "```" in message:

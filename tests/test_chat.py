@@ -15,3 +15,13 @@ def test_chat_explains_authorized_target():
 def test_chat_handles_bare_target():
     response = ChatSession().reply("127.0.0.1")
     assert "what would you like" in response.lower()
+
+
+def test_chat_suggests_scope_after_common_tests():
+    session = ChatSession()
+    response = session.reply("what are the most common penetration tests used by professionals?")
+    assert "would you like" in response.lower()
+
+    followup = session.reply("yes")
+    assert "recommended" in followup.lower()
+    assert "what target" in followup.lower()

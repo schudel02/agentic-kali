@@ -4,7 +4,7 @@ from agentic_kali.ai.provider import AIProvider
 from agentic_kali.ai.request import is_capability_question
 from agentic_kali.desktop.apps import parse_launch_request
 from agentic_kali.desktop.browser import parse_browser_request
-from agentic_kali.tools.capabilities import capability_menu, find_capability
+from agentic_kali.tools.capabilities import capability_menu, find_capability, recommended_scope
 from agentic_kali.tools.catalog import explain_tool, recommend_tools
 
 
@@ -21,14 +21,28 @@ SYSTEM_PROMPT = (
 class ChatSession:
     def __init__(self) -> None:
         self.messages: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        self.awaiting_scope_choice = False
 
     def reply(self, user_message: str) -> str:
+        scripted = self._scripted(user_message)
+        if scripted:
+            return scripted
         self.messages.append({"role": "user", "content": user_message})
         response = AIProvider().chat(self.messages)
         if not response:
             response = self._fallback(user_message)
         self.messages.append({"role": "assistant", "content": response})
         return response
+
+    def _scripted(self, user_message: str) -> str | None:
+        lower = user_message.lower().strip()
+        if self.awaiting_scope_choice and lower in {"yes", "y", "yeah", "sure", "ok", "okay"}:
+            self.awaiting_scope_choice = False
+            return recommended_scope()
+        if _asks_common_tests(lower) or is_capability_question(user_message):
+            self.awaiting_scope_choice = True
+            return capability_menu()
+        return None
 
     @staticmethod
     def _fallback(user_message: str) -> str:
@@ -79,3 +93,7 @@ class ChatSession:
             "I can help with authorized pentesting. Ask 'what all can you do?' for a menu, "
             "or give me a scoped target and a goal like 'run quick recon on 127.0.0.1'."
         )
+
+
+def _asks_common_tests(text: str) -> bool:
+    return "common" in text and any(phrase in text for phrase in ("penetration test", "pentest", "security test"))

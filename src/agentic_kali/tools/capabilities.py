@@ -70,7 +70,20 @@ def capability_menu() -> str:
     for item in CAPABILITIES:
         actions = ", ".join(item.actions)
         lines.append(f"- {item.title} [{item.key}] - {item.purpose} Tools/actions: {actions}. Risk: {item.risk}.")
+    lines.append("Would you like to perform one of these tests?")
     return "\n".join(lines)
+
+
+def recommended_scope() -> str:
+    return (
+        "Yes. Here is my recommended safe beginner scope:\n"
+        "- Engagement name: authorized recon\n"
+        "- Targets: tell me the IP, domain, or lab host you have permission to test\n"
+        "- Actions: ping_check, nmap_top_ports, whatweb, httpx_probe, nuclei_safe\n"
+        "- Approval mode: recon_only, or Admin Mode if you already enabled it\n"
+        "- Permission: type AUTHORIZED in Settings\n\n"
+        "What target do you want to test?"
+    )
 
 
 def find_capability(text: str) -> Capability | None:
@@ -79,4 +92,3 @@ def find_capability(text: str) -> Capability | None:
         if item.key in lowered or item.title.lower() in lowered:
             return item
     return None
-
