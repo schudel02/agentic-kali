@@ -36,3 +36,16 @@ def test_planner_marks_sqlmap_safe_intrusive():
     actions = AIPlanner(scope, EvidenceStore(), command="sql injection testing").propose_next_actions()
     assert [action.name for action in actions] == ["sqlmap_safe"]
     assert actions[0].intrusive
+
+
+def test_planner_prompt_allows_scoped_intrusive_actions():
+    scope = Scope(
+        engagement_name="x",
+        targets=["127.0.0.1"],
+        allowed_actions=["sqlmap_safe"],
+        signed_permission=True,
+        intrusive_allowed=True,
+    )
+    prompt = AIPlanner(scope, EvidenceStore(), command="sql injection testing")._prompt()
+    assert "sqlmap_safe" in prompt
+    assert "Intrusive allowed: True" in prompt

@@ -8,7 +8,7 @@ KEYWORDS = {
     "nmap_top_ports": ("nmap", "port", "ports", "service"),
     "whatweb": ("whatweb", "fingerprint", "web", "mapping", "map", "domain"),
     "httpx_probe": ("httpx", "title", "tech", "http", "mapping", "map", "domain"),
-    "nuclei_safe": ("nuclei", "template", "exposure", "misconfig"),
+    "nuclei_safe": ("nuclei", "template", "exposure", "misconfig", "vulnerability", "vulnerabilities", "vuln"),
     "sqlmap_safe": ("sql injection", "sqli", "sqlmap"),
 }
 

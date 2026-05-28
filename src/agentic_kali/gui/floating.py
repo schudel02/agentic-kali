@@ -251,7 +251,7 @@ class FloatingPrompt:
 
     def _run_scoped_tests(self, command: str, scope: Scope, target: str | None) -> None:
         actions = actions_from_command(command, scope.allowed_actions)
-        self._say("Agent Kal", summarize_request(command, actions, target))
+        self._say("Agent Kal", self._short_run_summary(command, actions, target))
         self._note(self._run_description(actions, target or ", ".join(scope.targets)))
         self._gui_event("run.preparing", {"target": target or scope.targets, "actions": actions})
         self._enter_run_mode(actions)
@@ -287,6 +287,11 @@ class FloatingPrompt:
     def _is_intrusive_request(self, command: str) -> bool:
         text = command.lower()
         return any(phrase in text for phrase in ("sql injection", "sqli", "sqlmap", "invasive", "intrusive"))
+
+    def _short_run_summary(self, command: str, actions: list[str], target: str | None) -> str:
+        if self._is_intrusive_request(command):
+            return f"Running authorized intrusive checks on {target}: {', '.join(actions)}."
+        return summarize_request(command, actions, target)
 
     def _summarize_results(self, report: dict, files: dict[str, str], stopped: bool = False) -> str:
         findings = report.get("findings", [])
@@ -603,6 +608,7 @@ class FloatingPrompt:
                 "approval_mode": ApprovalMode.RECON_ONLY,
                 "intrusive_allowed": True,
                 "signed_permission": True,
+                "public_targets_allowed": True,
             }
         )
         DEFAULT_SCOPE.parent.mkdir(parents=True, exist_ok=True)

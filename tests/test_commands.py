@@ -16,3 +16,7 @@ def test_domain_mapping_selects_web_mapping_actions():
 def test_sql_injection_selects_sqlmap_safe():
     assert actions_from_command("sql injection testing", ["sqlmap_safe", "nmap_top_ports"]) == ["sqlmap_safe"]
 
+
+def test_vulnerability_selects_nuclei():
+    assert actions_from_command("run vulnerability test", ["nuclei_safe", "nmap_top_ports"]) == ["nuclei_safe"]
+

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agentic_kali.core.planner import ALL_ACTIONS, INTRUSIVE_ACTIONS, SAFE_RECON_ACTIONS
+from agentic_kali.core.planner import ALL_ACTIONS, INTRUSIVE_ACTIONS
 from agentic_kali.ai.provider import AIProvider
 from agentic_kali.ai.commands import actions_from_command
 from agentic_kali.evidence.store import EvidenceStore
@@ -30,7 +30,7 @@ class AIPlanner:
         self.evidence.log(
             "ai.plan.proposed",
             {
-                "mode": "constrained-safe-recon",
+                "mode": "authorized-scoped-testing",
                 "ai_requested": ai_names,
                 "actions": [action.model_dump() for action in proposed],
             },
@@ -40,8 +40,9 @@ class AIPlanner:
     def _prompt(self) -> str:
         return (
             "Return only JSON like {\"actions\":[\"ping_check\"]}. "
-            f"Allowed safe actions: {', '.join(SAFE_RECON_ACTIONS)}. "
+            f"Known actions: {', '.join(ALL_ACTIONS)}. "
             f"Scope allowed actions: {', '.join(self.scope.allowed_actions)}. "
+            f"Intrusive allowed: {self.scope.intrusive_allowed}. "
             f"User command: {self.command}. "
-            "Choose authorized recon actions only."
+            "Choose only actions allowed by scope. Use intrusive actions only when intrusive_allowed is true and the request calls for them."
         )
