@@ -224,6 +224,8 @@ class FloatingPrompt:
     def _say(self, speaker: str, message: str, animated: bool = False) -> None:
         if speaker == "Agent Kal":
             animated = True
+            if self.admin_mode:
+                speaker = "Agent Kal (Admin Mode)"
         tag = "user" if speaker == "You" else "agent"
         self.chat.insert("end", f"{speaker}: ", tag)
         self.type_chars_on_page = 0
