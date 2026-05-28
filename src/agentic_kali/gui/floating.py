@@ -130,14 +130,22 @@ class FloatingPrompt:
     def _refresh_preview(self) -> None:
         if not self.preview_text:
             return
-        self.preview_text.delete("1.0", "end")
-        if not self.events:
-            self.preview_text.insert("end", "No activity yet.\n")
-            return
-        for event in self.events:
-            self.preview_text.insert("end", f"[{event['time']}] {event['event']}\n")
-            self.preview_text.insert("end", json.dumps(event["data"], indent=2))
-            self.preview_text.insert("end", "\n\n")
+        try:
+            if self.preview and not self.preview.winfo_exists():
+                self.preview = None
+                self.preview_text = None
+                return
+            self.preview_text.delete("1.0", "end")
+            if not self.events:
+                self.preview_text.insert("end", "No activity yet.\n")
+                return
+            for event in self.events:
+                self.preview_text.insert("end", f"[{event['time']}] {event['event']}\n")
+                self.preview_text.insert("end", json.dumps(event["data"], indent=2))
+                self.preview_text.insert("end", "\n\n")
+        except tk.TclError:
+            self.preview = None
+            self.preview_text = None
 
     def show_settings(self) -> None:
         window = tk.Toplevel(self.root)
