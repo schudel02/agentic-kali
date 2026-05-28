@@ -44,7 +44,7 @@ class FloatingPrompt:
         self.prompt.bind("<Return>", lambda _event: self.run())
         self.prompt.bind("<Button-1>", lambda _event: self.prompt.focus_set())
 
-        self.status = tk.StringVar(value="Ready")
+        self.status = tk.StringVar(value="")
         tk.Label(self.root, textvariable=self.status, anchor="w").pack(fill="x", padx=10)
 
         self.thinking = tk.StringVar(value="")
@@ -60,6 +60,7 @@ class FloatingPrompt:
         frame = tk.Frame(self.root)
         frame.pack(fill="x", padx=10, pady=8)
         tk.Button(frame, text="Send", command=self.run).pack(side="left")
+        tk.Button(frame, text="Stop", command=self.stop).pack(side="left", padx=8)
         tk.Button(frame, text="Preview", command=self.show_preview).pack(side="left", padx=8)
         tk.Button(frame, text="Watch Mode", command=self.show_watch_mode).pack(side="left", padx=8)
         tk.Button(frame, text="Settings", command=self.show_settings).pack(side="left", padx=8)
@@ -69,6 +70,7 @@ class FloatingPrompt:
         self.preview_text: tk.Text | None = None
         self.events: list[dict[str, Any]] = []
         self.session = ChatSession()
+        self.stop_requested = False
         self.root.after(300, self._focus_prompt)
 
     def run(self) -> None:
@@ -77,11 +79,16 @@ class FloatingPrompt:
             return
         self._say("You", command)
         self.prompt.delete(0, "end")
+        self.stop_requested = False
         threading.Thread(target=self._run_agent, daemon=True).start()
+
+    def stop(self) -> None:
+        self.stop_requested = True
+        self.status.set("Stopping...")
+        self._set_thinking("")
 
     def _run_agent(self) -> None:
         try:
-            self.status.set("Running scoped AI plan...")
             self._set_thinking("Thinking through your request...")
             scope = Scope.model_validate(json.loads(DEFAULT_SCOPE.read_text(encoding="utf-8")))
             self.events = []
@@ -90,7 +97,7 @@ class FloatingPrompt:
             self._set_thinking("")
             self._say("Agent Kal", reply)
             if not wants_tool_run(command):
-                self.status.set("Ready")
+                self.status.set("")
                 return
             target = extract_target(command)
             if target and target not in scope.targets:
@@ -104,14 +111,24 @@ class FloatingPrompt:
                 scope = scope.model_copy(update={"targets": [target]})
             actions = actions_from_command(command, scope.allowed_actions)
             self._say("Agent Kal", summarize_request(command, actions, target))
-            report = Orchestrator(scope, on_event=self._append_event, command=command).run()
+            self.status.set("Running tests...")
+            report = Orchestrator(
+                scope,
+                on_event=self._append_event,
+                command=command,
+                should_stop=lambda: self.stop_requested,
+            ).run()
             self.events = report.get("events", [])
             self._refresh_preview()
             files = write_reports(report)
             report["report_files"] = files
             append_history(report)
-            self._say("Agent Kal", f"Finished. I saved the report here: {files['markdown']}")
-            self.status.set(f"Done: {files['markdown']}")
+            if self.stop_requested:
+                self._say("Agent Kal", f"Stopped. I saved partial results here: {files['markdown']}")
+                self.status.set("Stopped")
+            else:
+                self._say("Agent Kal", f"Finished. I saved the report here: {files['markdown']}")
+                self.status.set(f"Done: {files['markdown']}")
         except Exception as exc:
             self.status.set("Error")
             self._set_thinking("")
@@ -138,12 +155,21 @@ class FloatingPrompt:
         if index >= len(text):
             self._focus_prompt()
             return
+        if not self._chat_at_bottom():
+            self.root.after(250, lambda: self._type_text(text, index))
+            return
         self.chat.configure(state="normal")
-        chunk = text[index : index + 3]
+        chunk = text[index : index + 2]
         self.chat.insert("end", chunk)
         self.chat.see("end")
         self.chat.configure(state="disabled")
-        self.root.after(18, lambda: self._type_text(text, index + len(chunk)))
+        self.root.after(45, lambda: self._type_text(text, index + len(chunk)))
+
+    def _chat_at_bottom(self) -> bool:
+        try:
+            return self.chat.yview()[1] >= 0.98
+        except tk.TclError:
+            return True
 
     def _focus_prompt(self) -> None:
         try:

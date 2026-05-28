@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import time
+from typing import Callable
 
 
 class CommandResult:
@@ -22,16 +24,36 @@ class CommandResult:
         }
 
 
-def run_command(command: list[str], timeout: int = 120) -> CommandResult:
+def run_command(
+    command: list[str],
+    timeout: int = 120,
+    should_stop: Callable[[], bool] | None = None,
+) -> CommandResult:
     if not shutil.which(command[0]):
         return CommandResult(command, False, None, "", f"{command[0]} not installed")
 
-    completed = subprocess.run(
+    started = time.monotonic()
+    process = subprocess.Popen(
         command,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=timeout,
-        check=False,
     )
-    return CommandResult(command, True, completed.returncode, completed.stdout, completed.stderr)
+    while process.poll() is None:
+        if should_stop and should_stop():
+            process.terminate()
+            try:
+                stdout, stderr = process.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                stdout, stderr = process.communicate()
+            return CommandResult(command, True, process.returncode, stdout, stderr or "stopped by operator")
+        if time.monotonic() - started > timeout:
+            process.kill()
+            stdout, stderr = process.communicate()
+            return CommandResult(command, True, process.returncode, stdout, stderr or "command timed out")
+        time.sleep(0.2)
+
+    stdout, stderr = process.communicate()
+    return CommandResult(command, True, process.returncode, stdout, stderr)
 

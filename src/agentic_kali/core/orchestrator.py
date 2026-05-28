@@ -18,12 +18,14 @@ class Orchestrator:
         scope: Scope,
         on_event: Callable[[dict[str, Any]], None] | None = None,
         command: str = "",
+        should_stop: Callable[[], bool] | None = None,
     ) -> None:
         self.scope = scope
         self.command = command
+        self.should_stop = should_stop or (lambda: False)
         self.policy = PolicyGate(scope)
         self.evidence = EvidenceStore(on_event=on_event)
-        self.tools = ToolRegistry(self.evidence)
+        self.tools = ToolRegistry(self.evidence, should_stop=self.should_stop)
 
     def run(self) -> dict:
         self.evidence.log("run.started", {"time": datetime.now(UTC).isoformat()})
@@ -31,6 +33,9 @@ class Orchestrator:
         planned_actions = AIPlanner(self.scope, self.evidence, command=self.command).propose_next_actions()
 
         for action in planned_actions:
+            if self.should_stop():
+                self.evidence.log("run.stopped", {"reason": "operator requested stop"})
+                break
             decision = self.policy.evaluate(action)
             self.evidence.log("policy.decision", decision.model_dump())
             if decision.approval_required and request_manual_approval(action):
