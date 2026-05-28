@@ -30,8 +30,13 @@ class FloatingPrompt:
         self.root.geometry("640x520+40+40")
         self.root.resizable(True, True)
 
-        self.chat = tk.Text(self.root, height=20, wrap="word")
-        self.chat.pack(fill="both", expand=True, padx=10, pady=(10, 6))
+        chat_frame = tk.Frame(self.root)
+        chat_frame.pack(fill="both", expand=True, padx=10, pady=(10, 6))
+        self.chat = tk.Text(chat_frame, height=20, wrap="word")
+        self.chat_scroll = tk.Scrollbar(chat_frame, orient="vertical", command=self.chat.yview)
+        self.chat.configure(yscrollcommand=self.chat_scroll.set)
+        self.chat.pack(side="left", fill="both", expand=True)
+        self.chat_scroll.pack(side="right", fill="y")
         self.chat.configure(state="disabled")
         self._say(
             "Agent Kal",
