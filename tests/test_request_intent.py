@@ -15,3 +15,4 @@ def test_wants_tool_run_requires_target():
 def test_wants_tool_run_intent_without_target():
     assert wants_tool_run_intent("run vulnerability test")
     assert wants_tool_run_intent("scan it")
+    assert wants_tool_run_intent("lets start with recon")

@@ -40,6 +40,9 @@ def wants_tool_run_intent(command: str) -> bool:
         "run vulnerability scan",
         "vulnerability test",
         "vulnerability scan",
+        "start with recon",
+        "start recon",
+        "quick recon",
         "run tests",
         "run test",
         "scan it",
@@ -48,7 +51,7 @@ def wants_tool_run_intent(command: str) -> bool:
         "scan that",
         "test that",
     )
-    run_words = ("scan", "test", "pentest", "check", "enumerate", "probe", "fingerprint")
+    run_words = ("scan", "test", "pentest", "check", "enumerate", "probe", "fingerprint", "recon")
     return any(phrase in text for phrase in run_phrases) or any(word in text for word in run_words)
 
 

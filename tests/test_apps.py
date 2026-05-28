@@ -34,6 +34,10 @@ def test_parse_run_tool_with_args_in_terminal():
     assert request.requires_tools_open
 
 
+def test_start_with_recon_is_not_tool_launch():
+    assert parse_launch_request("lets start with recon") is None
+
+
 def test_clean_exec_strips_desktop_fields():
     from agentic_kali.desktop.apps import _clean_exec
 

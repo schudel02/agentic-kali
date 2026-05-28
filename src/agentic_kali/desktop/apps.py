@@ -47,6 +47,8 @@ def parse_launch_request(text: str) -> LaunchRequest | None:
 
     requested = match.group(1).strip().strip(".?!")
     requested_lower = requested.lower()
+    if requested_lower.startswith("with "):
+        return None
     terminal = "terminal" in requested_lower or "shell" in requested_lower
     requested_clean = re.sub(r"\b(?:in|inside|with)\s+(?:a\s+)?(?:terminal|shell)\b", "", requested, flags=re.IGNORECASE).strip()
     parts = _split_command(requested_clean)
