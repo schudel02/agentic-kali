@@ -6,6 +6,9 @@ python3-tk
 nmap
 masscan
 nuclei
+xdotool
+wmctrl
+scrot
 httpx-toolkit
 naabu
 whatweb

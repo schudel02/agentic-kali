@@ -95,6 +95,9 @@ Uses `/etc/agentic-kali/scope.json`.
 
 The preview window shows activity events, policy decisions, selected actions, and tool output summaries.
 Settings can be configured inside the floating GUI.
+Agent Kal uses Azure AI for conversational replies when configured.
+
+Watch Mode uses `xdotool` and `wmctrl` to preview desktop automation steps.
 
 ## Docker
 
