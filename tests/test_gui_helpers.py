@@ -36,9 +36,16 @@ def test_preview_transcript_mode_quotes_text():
     prompt = object.__new__(FloatingPrompt)
     prompt.preview_mode = _Mode("transcript")
     text, tag = prompt._preview_event_text({"time": "now", "event": "run.completed", "data": {"findings": 2}})
-    assert tag == "transcript"
+    assert tag == "transcript_result"
     assert text.startswith('"')
     assert "Test run completed" in text
+
+
+def test_preview_transcript_actions_are_italic_tag():
+    prompt = object.__new__(FloatingPrompt)
+    prompt.preview_mode = _Mode("transcript")
+    _text, tag = prompt._preview_event_text({"time": "now", "event": "action.started", "data": {"action": "nmap_top_ports", "target": "example.com"}})
+    assert tag == "transcript_action"
 
 
 def test_summary_explains_findings_in_laymens_terms():

@@ -917,7 +917,8 @@ class FloatingPrompt:
         tk.Radiobutton(toolbar, text="Transcript", variable=self.preview_mode, value="transcript", command=self._refresh_preview).pack(side="left")
         tk.Radiobutton(toolbar, text="Raw Events", variable=self.preview_mode, value="raw", command=self._refresh_preview).pack(side="left", padx=8)
         self.preview_text = tk.Text(frame, wrap="word")
-        self.preview_text.tag_configure("transcript", lmargin1=90, lmargin2=90, rmargin=90, justify="center", font=("Serif", 11, "italic"))
+        self.preview_text.tag_configure("transcript_action", lmargin1=90, lmargin2=90, rmargin=90, justify="center", font=("Serif", 11, "italic"))
+        self.preview_text.tag_configure("transcript_result", lmargin1=90, lmargin2=90, rmargin=90, justify="center", font=("Serif", 11))
         self.preview_text.tag_configure("raw", font=("Courier", 10), lmargin1=4, lmargin2=4, rmargin=4)
         preview_scroll = tk.Scrollbar(frame, orient="vertical", command=self.preview_text.yview)
         self.preview_text.configure(yscrollcommand=preview_scroll.set)
@@ -957,7 +958,7 @@ class FloatingPrompt:
             if self.preview_text.get("1.0", "end").strip() == "No activity yet.":
                 self.preview_text.delete("1.0", "end")
             text, tag = self._preview_event_text(event)
-            if animated and tag == "transcript":
+            if animated and tag.startswith("transcript_"):
                 self._type_preview_lines(text.splitlines(keepends=True), tag, scroll)
                 return
             self.preview_text.insert("end", text, tag)
@@ -970,7 +971,15 @@ class FloatingPrompt:
     def _preview_event_text(self, event: dict[str, Any]) -> tuple[str, str]:
         if self.preview_mode.get() == "raw":
             return f"[{event['time']}] {event['event']}\n{json.dumps(event['data'], indent=2)}\n\n", "raw"
-        return self._quote_transcript(self._natural_event_text(event)) + "\n\n", "transcript"
+        return self._quote_transcript(self._natural_event_text(event)) + "\n\n", self._transcript_tag(event)
+
+    def _transcript_tag(self, event: dict[str, Any]) -> str:
+        name = event.get("event", "")
+        if name.startswith("tool.") and name != "tool.description":
+            return "transcript_result"
+        if name in {"run.completed", "gui.launch.completed"}:
+            return "transcript_result"
+        return "transcript_action"
 
     def _quote_transcript(self, text: str) -> str:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
