@@ -39,17 +39,23 @@ class FloatingPrompt:
         self.chat.configure(yscrollcommand=self.chat_scroll.set)
         self.chat.pack(side="left", fill="both", expand=True)
         self.chat_scroll.pack(side="right", fill="y")
-        self.chat.configure(state="disabled")
+        self.chat.tag_configure("user", justify="right", lmargin1=120, lmargin2=120, rmargin=12)
+        self.chat.tag_configure("agent", justify="left", lmargin1=8, lmargin2=8, rmargin=80)
+        self.chat.tag_configure("code", background="#eeeeee", font=("Courier", 10), lmargin1=18, lmargin2=18, rmargin=18)
+        self.chat.bind("<Key>", lambda event: "break")
         self._say(
             "Agent Kal",
             "Hello James, I'm Agent Kal. Tell me what authorized system you want to test, and I'll choose the Kali tools, run safe checks, and explain what I find.",
             animated=True,
         )
 
-        self.prompt = tk.Entry(self.root)
-        self.prompt.pack(fill="x", padx=10, pady=(0, 6))
+        input_frame = tk.Frame(self.root)
+        input_frame.pack(fill="x", padx=10, pady=(0, 6))
+        self.prompt = tk.Entry(input_frame, relief="groove", borderwidth=2)
+        self.prompt.pack(side="left", fill="x", expand=True, ipady=6)
         self.prompt.bind("<Return>", lambda _event: self.run())
         self.prompt.bind("<Button-1>", lambda _event: self.prompt.focus_set())
+        tk.Button(input_frame, text="Send", command=self.run).pack(side="right", padx=(8, 0))
 
         self.status = tk.StringVar(value="")
         tk.Label(self.root, textvariable=self.status, anchor="w").pack(fill="x", padx=10)
@@ -66,8 +72,7 @@ class FloatingPrompt:
 
         frame = tk.Frame(self.root)
         frame.pack(fill="x", padx=10, pady=8)
-        tk.Button(frame, text="Send", command=self.run).pack(side="left")
-        tk.Button(frame, text="Stop", command=self.stop).pack(side="left", padx=8)
+        tk.Button(frame, text="Stop", command=self.stop).pack(side="left")
         tk.Button(frame, text="Preview", command=self.show_preview).pack(side="left", padx=8)
         tk.Button(frame, text="Watch Mode", command=self.show_watch_mode).pack(side="left", padx=8)
         tk.Button(frame, text="Settings", command=self.show_settings).pack(side="left", padx=8)
@@ -178,30 +183,62 @@ class FloatingPrompt:
     def _say(self, speaker: str, message: str, animated: bool = False) -> None:
         if speaker == "Agent Kal":
             animated = True
-        self.chat.configure(state="normal")
-        self.chat.insert("end", f"{speaker}: ")
+        tag = "user" if speaker == "You" else "agent"
+        self.chat.insert("end", f"{speaker}: ", tag)
         self.type_chars_on_page = 0
         if animated:
-            self.chat.configure(state="disabled")
-            self._type_text(message + "\n\n")
+            if "```" in message:
+                self._insert_message_text(message + "\n\n", tag)
+                self._focus_prompt()
+            else:
+                self._type_text(message + "\n\n", tag=tag)
             return
-        self.chat.insert("end", f"{message}\n\n")
+        self._insert_message_text(message + "\n\n", tag)
         self.chat.see("end")
-        self.chat.configure(state="disabled")
 
-    def _type_text(self, text: str, index: int = 0) -> None:
+    def _type_text(self, text: str, index: int = 0, tag: str = "agent") -> None:
         if index >= len(text):
             self._focus_prompt()
             return
-        self.chat.configure(state="normal")
         chunk = text[index : index + 4]
-        self.chat.insert("end", chunk)
+        self.chat.insert("end", chunk, tag)
         self.type_chars_on_page += len(chunk)
         if self.type_chars_on_page >= self._chat_page_chars():
             self.chat.yview_scroll(1, "pages")
             self.type_chars_on_page = 0
-        self.chat.configure(state="disabled")
-        self.root.after(15, lambda: self._type_text(text, index + len(chunk)))
+        self.root.after(15, lambda: self._type_text(text, index + len(chunk), tag))
+
+    def _insert_message_text(self, text: str, tag: str) -> None:
+        for part in self._split_code_blocks(text):
+            if part[0] == "code":
+                self._insert_code_block(part[1])
+            else:
+                self.chat.insert("end", part[1], tag)
+
+    def _split_code_blocks(self, text: str) -> list[tuple[str, str]]:
+        parts: list[tuple[str, str]] = []
+        while "```" in text:
+            before, rest = text.split("```", 1)
+            if before:
+                parts.append(("text", before))
+            if "```" not in rest:
+                parts.append(("text", rest))
+                return parts
+            code, text = rest.split("```", 1)
+            lines = code.splitlines()
+            if lines and lines[0].strip().isalpha():
+                code = "\n".join(lines[1:])
+            parts.append(("code", code.strip() + "\n"))
+        if text:
+            parts.append(("text", text))
+        return parts
+
+    def _insert_code_block(self, code: str) -> None:
+        self.chat.insert("end", "\n", "agent")
+        self.chat.insert("end", code, "code")
+        button = tk.Button(self.chat, text="Copy", command=lambda value=code: self.root.clipboard_clear() or self.root.clipboard_append(value))
+        self.chat.window_create("end", window=button)
+        self.chat.insert("end", "\n\n", "agent")
 
     def _chat_page_chars(self) -> int:
         try:

@@ -20,3 +20,9 @@ def test_parse_firefox_url():
     assert request
     assert request.command == "firefox"
     assert request.args == ("https://example.com",)
+
+
+def test_clean_exec_strips_desktop_fields():
+    from agentic_kali.desktop.apps import _clean_exec
+
+    assert _clean_exec("firefox %u") == ["firefox"]
