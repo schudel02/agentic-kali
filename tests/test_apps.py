@@ -14,3 +14,9 @@ def test_parse_launch_normal_program():
     assert request.command == "firefox"
     assert request.risk == "normal"
 
+
+def test_parse_firefox_url():
+    request = parse_launch_request("open firefox and go to example.com")
+    assert request
+    assert request.command == "firefox"
+    assert request.args == ("https://example.com",)

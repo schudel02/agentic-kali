@@ -114,7 +114,7 @@ class FloatingPrompt:
                         self._say("Agent Kal", "Launch cancelled.")
                         self.status.set("")
                         return
-                ok, output = launch_program(launch.command)
+                ok, output = launch_program(launch.command, launch.args)
                 self._say("Agent Kal", output)
                 self.status.set("" if ok else "Launch failed")
                 return
@@ -210,8 +210,11 @@ class FloatingPrompt:
         return messages[-1] if messages else ""
 
     def _append_event(self, event: dict[str, Any]) -> None:
+        self.root.after(0, lambda: self._record_event(event))
+
+    def _record_event(self, event: dict[str, Any]) -> None:
         self.events.append(event)
-        self.root.after(0, self._refresh_preview)
+        self._append_preview_event(event)
 
     def show_preview(self) -> None:
         if self.preview and self.preview.winfo_exists():
@@ -222,8 +225,13 @@ class FloatingPrompt:
         self.preview.title("Agentic Kali Activity")
         self.preview.attributes("-topmost", True)
         self.preview.geometry("680x520+480+40")
-        self.preview_text = tk.Text(self.preview, wrap="word")
-        self.preview_text.pack(fill="both", expand=True, padx=8, pady=8)
+        frame = tk.Frame(self.preview)
+        frame.pack(fill="both", expand=True, padx=8, pady=8)
+        self.preview_text = tk.Text(frame, wrap="word")
+        preview_scroll = tk.Scrollbar(frame, orient="vertical", command=self.preview_text.yview)
+        self.preview_text.configure(yscrollcommand=preview_scroll.set)
+        self.preview_text.pack(side="left", fill="both", expand=True)
+        preview_scroll.pack(side="right", fill="y")
         self._refresh_preview()
 
     def _refresh_preview(self) -> None:
@@ -239,9 +247,21 @@ class FloatingPrompt:
                 self.preview_text.insert("end", "No activity yet.\n")
                 return
             for event in self.events:
-                self.preview_text.insert("end", f"[{event['time']}] {event['event']}\n")
-                self.preview_text.insert("end", json.dumps(event["data"], indent=2))
-                self.preview_text.insert("end", "\n\n")
+                self._append_preview_event(event, scroll=False)
+            self.preview_text.see("end")
+        except tk.TclError:
+            self.preview = None
+            self.preview_text = None
+
+    def _append_preview_event(self, event: dict[str, Any], scroll: bool = True) -> None:
+        if not self.preview_text:
+            return
+        try:
+            self.preview_text.insert("end", f"[{event['time']}] {event['event']}\n")
+            self.preview_text.insert("end", json.dumps(event["data"], indent=2))
+            self.preview_text.insert("end", "\n\n")
+            if scroll:
+                self.preview_text.see("end")
         except tk.TclError:
             self.preview = None
             self.preview_text = None

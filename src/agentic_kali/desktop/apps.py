@@ -5,6 +5,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 
+URL_RE = re.compile(r"\b((?:https?://)?(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(?:/[^\s]*)?)\b")
 
 ALIASES = {
     "social engineering toolkit": "setoolkit",
@@ -25,6 +26,7 @@ class LaunchRequest:
     display_name: str
     command: str
     risk: str
+    args: tuple[str, ...] = ()
 
 
 def parse_launch_request(text: str) -> LaunchRequest | None:
@@ -35,18 +37,33 @@ def parse_launch_request(text: str) -> LaunchRequest | None:
 
     requested = match.group(1).strip().strip(".?!")
     command = ALIASES.get(requested, requested.split()[0])
+    url = _extract_url(requested)
+    if requested.startswith("firefox") and url:
+        command = "firefox"
     command = re.sub(r"[^a-zA-Z0-9._+-]", "", command)
     if not command:
         return None
 
     risk = "approval_required" if command in HIGH_RISK else "normal"
-    return LaunchRequest(display_name=requested, command=command, risk=risk)
+    args = (_normalize_url(url),) if command in {"firefox", "xdg-open"} and url else ()
+    return LaunchRequest(display_name=requested, command=command, risk=risk, args=args)
 
 
-def launch_program(command: str) -> tuple[bool, str]:
+def launch_program(command: str, args: tuple[str, ...] = ()) -> tuple[bool, str]:
     resolved = shutil.which(command)
     if not resolved:
         return False, f"{command} is not installed or not on PATH."
-    subprocess.Popen([resolved])
-    return True, f"Opened {command}."
+    subprocess.Popen([resolved, *args])
+    suffix = f" to {args[0]}" if args else ""
+    return True, f"Opened {command}{suffix}."
 
+
+def _extract_url(text: str) -> str | None:
+    match = URL_RE.search(text)
+    return match.group(1) if match else None
+
+
+def _normalize_url(url: str) -> str:
+    if url.startswith(("http://", "https://")):
+        return url
+    return f"https://{url}"
