@@ -42,6 +42,18 @@ else
   echo "Keeping existing /etc/agentic-kali/config.json"
 fi
 
+if [ ! -f /etc/agentic-kali/admin.json ]; then
+  python3 - <<'PY'
+import hashlib, json
+from pathlib import Path
+path = Path("/etc/agentic-kali/admin.json")
+path.write_text(json.dumps({
+    "admin_phrase_sha256": hashlib.sha256(b"enable authorized admin mode").hexdigest()
+}, indent=2))
+PY
+  chmod 0600 /etc/agentic-kali/admin.json
+fi
+
 systemctl daemon-reload || true
 
 echo "Run: sudo agentic-kali init /etc/agentic-kali/scope.json"

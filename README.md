@@ -100,6 +100,9 @@ It can also explain Kali tools and recommend tools by task.
 Ask "what testing can you do?" to show selectable pentest workflows.
 Browser control commands require approval before Agent Kal opens pages, types, refreshes, or navigates.
 
+Admin Approved Mode can be enabled with the configured admin phrase in `/etc/agentic-kali/admin.json`.
+It reduces repeated prompts for approved actions but still requires scope and logs activity.
+
 Watch Mode uses `xdotool` and `wmctrl` to preview desktop automation steps.
 
 ## Docker

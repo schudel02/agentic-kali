@@ -16,6 +16,7 @@ from agentic_kali.desktop.watch import WatchMode
 from agentic_kali.desktop.apps import LaunchRequest, launch_program, parse_launch_request
 from agentic_kali.desktop.browser import parse_browser_request, run_browser_request
 from agentic_kali.policy.models import Scope
+from agentic_kali.policy.admin import is_admin_phrase
 from agentic_kali.reporting.history import append_history
 from agentic_kali.setup import run_config_wizard
 from agentic_kali.reporting.writer import write_reports
@@ -90,6 +91,7 @@ class FloatingPrompt:
         self.stop_requested = False
         self.type_chars_on_page = 0
         self.pending_launch: LaunchRequest | None = None
+        self.admin_mode = False
         self.root.after(300, self._focus_prompt)
 
     def run(self) -> None:
@@ -112,6 +114,12 @@ class FloatingPrompt:
             scope = Scope.model_validate(json.loads(DEFAULT_SCOPE.read_text(encoding="utf-8")))
             self.events = []
             command = self._last_user_message()
+            if is_admin_phrase(command):
+                self.admin_mode = True
+                self._set_thinking("")
+                self._say("Agent Kal", "Admin Approved Mode enabled for this session. I will still stay inside scope and log every action.")
+                self.status.set("Admin Approved Mode")
+                return
             launch = parse_launch_request(command) or self._continued_launch(command)
             if launch:
                 self._set_thinking("")
@@ -174,6 +182,13 @@ class FloatingPrompt:
     def _handle_launch(self, launch: LaunchRequest) -> None:
         self.pending_launch = launch
         if launch.risk == "approval_required":
+            if self.admin_mode:
+                self._say("Agent Kal", f"Admin Approved Mode: launching {launch.display_name}.")
+                ok, output = launch_program(launch.command, launch.args)
+                self.pending_launch = None if ok else launch
+                self._say("Agent Kal", output)
+                self.status.set("" if ok else "Launch failed")
+                return
             approved = messagebox.askyesno(
                 "Approve Launch",
                 f"Open {launch.display_name} ({launch.command})?\n\nThis is marked {launch.risk}.",
@@ -188,14 +203,17 @@ class FloatingPrompt:
         self.status.set("" if ok else "Launch failed")
 
     def _handle_browser(self, browser_request) -> None:
-        approved = messagebox.askyesno(
-            "Approve Browser Control",
-            f"Allow Agent Kal to perform browser action: {browser_request.action} {browser_request.value}".strip(),
-        )
-        if not approved:
-            self._say("Agent Kal", "Browser action cancelled.")
-            self.status.set("")
-            return
+        if not self.admin_mode:
+            approved = messagebox.askyesno(
+                "Approve Browser Control",
+                f"Allow Agent Kal to perform browser action: {browser_request.action} {browser_request.value}".strip(),
+            )
+            if not approved:
+                self._say("Agent Kal", "Browser action cancelled.")
+                self.status.set("")
+                return
+        else:
+            self._say("Agent Kal", f"Admin Approved Mode: browser action {browser_request.action}.")
         ok, output = run_browser_request(browser_request)
         self._say("Agent Kal", output)
         self.status.set("" if ok else "Browser action failed")
