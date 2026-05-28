@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -23,6 +24,7 @@ from agentic_kali.reporting.writer import write_reports
 
 
 DEFAULT_SCOPE = Path("/etc/agentic-kali/scope.json")
+COMMAND_PREFIXES = ("sudo", "cd", "git", "bash", "python", "python3", "pip", "pip3", "nmap", "curl", "wget", "apt", "systemctl")
 
 
 class FloatingPrompt:
@@ -45,6 +47,7 @@ class FloatingPrompt:
         self.chat.tag_configure("user_label", justify="right", font=("TkDefaultFont", 10, "bold"))
         self.chat.tag_configure("agent_label", justify="left", font=("TkDefaultFont", 10, "bold"), foreground="#174ea6")
         self.chat.tag_configure("code", background="#eeeeee", font=("Courier", 10), lmargin1=18, lmargin2=18, rmargin=18)
+        self.chat.tag_configure("code_prefix", background="#eeeeee", foreground="#174ea6", font=("Courier", 10, "bold"))
         self.chat.bind("<Key>", self._chat_keypress)
         self.chat.bind("<Control-c>", self._copy_selection)
         self.chat.bind("<Button-3>", self._show_chat_menu)
@@ -126,6 +129,14 @@ class FloatingPrompt:
             scope = Scope.model_validate(json.loads(DEFAULT_SCOPE.read_text(encoding="utf-8")))
             self.events = []
             command = self._last_user_message()
+            consent_scope = self._scope_from_consent(command, scope)
+            if consent_scope:
+                scope = consent_scope
+                self._say("Agent Kal", f"Consent saved for {', '.join(scope.targets)}. Admin Mode can now run scoped safe actions without extra approval prompts.")
+                if not wants_tool_run(command):
+                    self._set_thinking("")
+                    self.status.set("Scope saved")
+                    return
             if is_admin_phrase(command):
                 self.admin_mode = True
                 self._set_thinking("")
@@ -152,7 +163,7 @@ class FloatingPrompt:
             if target and target not in scope.targets:
                 self._say(
                     "Agent Kal",
-                    f"I found target {target}, but it is not in your authorized scope. Add it in Settings and confirm permission before I run tests.",
+                    f"I found target {target}, but it is not in your authorized scope. Say `I authorize testing of {target}` once, or add it in Settings.",
                 )
                 self.status.set("Needs scope update")
                 return
@@ -234,6 +245,26 @@ class FloatingPrompt:
         self._say("Agent Kal", output)
         self.status.set("" if ok else "Browser action failed")
 
+    def _scope_from_consent(self, command: str, existing: Scope) -> Scope | None:
+        lower = command.lower()
+        if "authorize" not in lower and "authorized" not in lower:
+            return None
+        target = extract_target(command)
+        if not target:
+            return None
+        targets = list(dict.fromkeys([*existing.targets, target]))
+        scope = existing.model_copy(
+            update={
+                "targets": targets,
+                "allowed_actions": list(dict.fromkeys([*existing.allowed_actions, *SAFE_RECON_ACTIONS])),
+                "approval_mode": "recon_only",
+                "signed_permission": True,
+            }
+        )
+        DEFAULT_SCOPE.parent.mkdir(parents=True, exist_ok=True)
+        DEFAULT_SCOPE.write_text(json.dumps(scope.model_dump(mode="json"), indent=2), encoding="utf-8")
+        return scope
+
     def _set_thinking(self, message: str) -> None:
         self.root.after(0, lambda: self.thinking.set(message))
 
@@ -261,7 +292,7 @@ class FloatingPrompt:
         self.chat.insert("end", f"{speaker}: ", label_tag)
         self.type_chars_on_page = 0
         if animated:
-            if "```" in message:
+            if "```" in message or self._has_command_lines(message):
                 self._insert_message_text(message + "\n\n", tag)
                 self._drain_say_queue()
             else:
@@ -287,6 +318,8 @@ class FloatingPrompt:
         for part in self._split_code_blocks(text):
             if part[0] == "code":
                 self._insert_code_block(part[1])
+            elif part[0] == "command":
+                self._insert_code_block(part[1])
             else:
                 self.chat.insert("end", part[1], tag)
 
@@ -305,15 +338,62 @@ class FloatingPrompt:
                 code = "\n".join(lines[1:])
             parts.append(("code", code.strip() + "\n"))
         if text:
-            parts.append(("text", text))
+            parts.extend(self._split_command_lines(text))
         return parts
+
+    def _split_command_lines(self, text: str) -> list[tuple[str, str]]:
+        parts: list[tuple[str, str]] = []
+        text_lines: list[str] = []
+        command_lines: list[str] = []
+        for line in text.splitlines(keepends=True):
+            if self._is_command_line(line):
+                if text_lines:
+                    parts.append(("text", "".join(text_lines)))
+                    text_lines = []
+                command_lines.append(line.rstrip() + "\n")
+            else:
+                if command_lines:
+                    parts.append(("command", "".join(command_lines)))
+                    command_lines = []
+                text_lines.append(line)
+        if command_lines:
+            parts.append(("command", "".join(command_lines)))
+        if text_lines:
+            parts.append(("text", "".join(text_lines)))
+        return parts
+
+    def _has_command_lines(self, text: str) -> bool:
+        return any(self._is_command_line(line) for line in text.splitlines())
+
+    def _is_command_line(self, line: str) -> bool:
+        stripped = line.strip()
+        if not stripped:
+            return False
+        stripped = stripped.removeprefix("- ").removeprefix("* ")
+        stripped = stripped.removeprefix("$ ").removeprefix("# ")
+        first = stripped.split(maxsplit=1)[0]
+        return first in COMMAND_PREFIXES
 
     def _insert_code_block(self, code: str) -> None:
         self.chat.insert("end", "\n", "agent")
-        self.chat.insert("end", code, "code")
-        button = tk.Button(self.chat, text="Copy", command=lambda value=code: self.root.clipboard_clear() or self.root.clipboard_append(value))
+        for line in code.splitlines(keepends=True):
+            self._insert_code_line(line)
+        button = tk.Button(self.chat, text="Copy all", command=lambda value=code: self.root.clipboard_clear() or self.root.clipboard_append(value))
         self.chat.window_create("end", window=button)
         self.chat.insert("end", "\n\n", "agent")
+
+    def _insert_code_line(self, line: str) -> None:
+        match = re.match(r"^(\s*(?:[-*]\s*)?(?:[$#]\s*)?)(\S+)(.*)$", line)
+        if not match:
+            self.chat.insert("end", line, "code")
+            return
+        lead, prefix, rest = match.groups()
+        self.chat.insert("end", lead, "code")
+        if prefix in COMMAND_PREFIXES:
+            self.chat.insert("end", prefix, ("code", "code_prefix"))
+        else:
+            self.chat.insert("end", prefix, "code")
+        self.chat.insert("end", rest, "code")
 
     def _chat_page_chars(self) -> int:
         try:
