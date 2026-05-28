@@ -19,6 +19,7 @@ from agentic_kali.ai.chat import ChatSession
 from agentic_kali.desktop.watch import WatchMode
 from agentic_kali.desktop.apps import LaunchRequest, launch_program, parse_launch_request
 from agentic_kali.desktop.browser import parse_browser_request, run_browser_request
+from agentic_kali.desktop.builder import build_custom_tool, is_safe_build_request, parse_build_request
 from agentic_kali.desktop.lab import LabServer, parse_lab_request, start_lab_server
 from agentic_kali.policy.models import Scope
 from agentic_kali.policy.models import ApprovalMode
@@ -161,6 +162,11 @@ class FloatingPrompt:
             if lab_request:
                 self._set_thinking("")
                 self._handle_lab_request(scope, lab_request)
+                return
+            build_request = parse_build_request(command)
+            if build_request:
+                self._set_thinking("")
+                self._handle_build_request(build_request)
                 return
             target = extract_target(command) or self.last_target
             if target and self._wants_run(command, target):
@@ -378,6 +384,23 @@ class FloatingPrompt:
             "You can now say `run vulnerability test` or `run quick recon` and I will use this local server.",
         )
         self.status.set(f"Local lab running: {server.url}")
+
+    def _handle_build_request(self, build_request) -> None:
+        if not is_safe_build_request(build_request):
+            self._say("Agent Kal", "I can build safe authorized-testing helpers, but I cannot create tools for phishing, credential theft, malware, persistence, exfiltration, or destructive activity.")
+            self.status.set("Build blocked")
+            return
+        tool = build_custom_tool(build_request)
+        self._gui_event("custom_tool.built", {"name": tool.name, "path": str(tool.path), "command": tool.command})
+        self._say(
+            "Agent Kal",
+            "I built a safe local testing helper.\n"
+            f"- Name: {tool.name}\n"
+            f"- Folder: {tool.path}\n"
+            f"- Run it with:\n```bash\n{tool.command} example.com --dns --http\n```\n"
+            "Tell me the authorized target and I can help run it in a terminal.",
+        )
+        self.status.set(f"Built custom tool: {tool.name}")
 
     def _handle_browser(self, browser_request) -> None:
         if not self.admin_mode:
