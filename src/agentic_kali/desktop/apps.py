@@ -20,6 +20,7 @@ ALIASES = {
 }
 
 HIGH_RISK = {"setoolkit", "msfconsole", "hydra", "sqlmap"}
+PRIVILEGED = {"wireshark", "setoolkit"}
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class LaunchRequest:
     command: str
     risk: str
     args: tuple[str, ...] = ()
+    privileged: bool = False
 
 
 def parse_launch_request(text: str) -> LaunchRequest | None:
@@ -47,14 +49,18 @@ def parse_launch_request(text: str) -> LaunchRequest | None:
 
     risk = "approval_required" if command in HIGH_RISK else "normal"
     args = (_normalize_url(url),) if command in {"firefox", "xdg-open"} and url else ()
-    return LaunchRequest(display_name=requested, command=command, risk=risk, args=args)
+    return LaunchRequest(display_name=requested, command=command, risk=risk, args=args, privileged=command in PRIVILEGED)
 
 
-def launch_program(command: str, args: tuple[str, ...] = ()) -> tuple[bool, str]:
+def launch_program(command: str, args: tuple[str, ...] = (), privileged: bool = False) -> tuple[bool, str]:
     desktop = _find_desktop_command(command)
+    auth = _auth_prefix() if privileged else []
+    if privileged and not auth:
+        return False, "This tool needs admin rights, but pkexec/sudo is not available."
     if desktop and not args:
-        subprocess.Popen(desktop)
-        return True, f"Opened {command}."
+        subprocess.Popen([*auth, *desktop])
+        suffix = " Kali may ask for your password." if privileged else ""
+        return True, f"Opened {command}.{suffix}"
 
     resolved = shutil.which(command)
     if not resolved:
@@ -62,11 +68,23 @@ def launch_program(command: str, args: tuple[str, ...] = ()) -> tuple[bool, str]
     if command in {"setoolkit", "msfconsole"}:
         terminal = shutil.which("qterminal") or shutil.which("x-terminal-emulator")
         if terminal:
-            subprocess.Popen([terminal, "-e", resolved, *args])
-            return True, f"Opened {command} in a terminal."
-    subprocess.Popen([resolved, *args])
+            subprocess.Popen([*auth, terminal, "-e", resolved, *args])
+            suffix = " Kali may ask for your password." if privileged else ""
+            return True, f"Opened {command} in a terminal.{suffix}"
+    subprocess.Popen([*auth, resolved, *args])
     suffix = f" to {args[0]}" if args else ""
-    return True, f"Opened {command}{suffix}."
+    auth_note = " Kali may ask for your password." if privileged else ""
+    return True, f"Opened {command}{suffix}.{auth_note}"
+
+
+def _auth_prefix() -> list[str]:
+    pkexec = shutil.which("pkexec")
+    if pkexec:
+        return [pkexec]
+    sudo = shutil.which("sudo")
+    if sudo:
+        return [sudo]
+    return []
 
 
 def _extract_url(text: str) -> str | None:

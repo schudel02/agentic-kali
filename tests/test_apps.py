@@ -6,6 +6,7 @@ def test_parse_launch_alias():
     assert request
     assert request.command == "setoolkit"
     assert request.risk == "approval_required"
+    assert request.privileged
 
 
 def test_parse_launch_normal_program():
@@ -13,6 +14,7 @@ def test_parse_launch_normal_program():
     assert request
     assert request.command == "firefox"
     assert request.risk == "normal"
+    assert not request.privileged
 
 
 def test_parse_firefox_url():

@@ -184,20 +184,23 @@ class FloatingPrompt:
         if launch.risk == "approval_required":
             if self.admin_mode:
                 self._say("Agent Kal", f"Admin Approved Mode: launching {launch.display_name}.")
-                ok, output = launch_program(launch.command, launch.args)
+                if launch.privileged:
+                    self._say("Agent Kal", "Kali may ask for your password in a system prompt.")
+                ok, output = launch_program(launch.command, launch.args, launch.privileged)
                 self.pending_launch = None if ok else launch
                 self._say("Agent Kal", output)
                 self.status.set("" if ok else "Launch failed")
                 return
             approved = messagebox.askyesno(
                 "Approve Launch",
-                f"Open {launch.display_name} ({launch.command})?\n\nThis is marked {launch.risk}.",
+                f"Open {launch.display_name} ({launch.command})?\n\nThis is marked {launch.risk}."
+                + ("\nKali may ask for your password in a system prompt." if launch.privileged else ""),
             )
             if not approved:
                 self._say("Agent Kal", "Launch cancelled.")
                 self.status.set("")
                 return
-        ok, output = launch_program(launch.command, launch.args)
+        ok, output = launch_program(launch.command, launch.args, launch.privileged)
         self.pending_launch = None if ok else launch
         self._say("Agent Kal", output)
         self.status.set("" if ok else "Launch failed")
