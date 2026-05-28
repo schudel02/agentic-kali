@@ -96,6 +96,8 @@ Uses `/etc/agentic-kali/scope.json`.
 The preview window shows activity events, policy decisions, selected actions, and tool output summaries.
 Settings can be configured inside the floating GUI.
 Agent Kal uses Azure AI for conversational replies when configured.
+It can also explain Kali tools and recommend tools by task.
+Ask "what testing can you do?" to show selectable pentest workflows.
 
 Watch Mode uses `xdotool` and `wmctrl` to preview desktop automation steps.
 
