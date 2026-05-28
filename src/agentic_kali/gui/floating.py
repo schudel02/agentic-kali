@@ -297,13 +297,13 @@ class FloatingPrompt:
             severity = finding.get("severity", "info")
             counts[severity] = counts.get(severity, 0) + 1
         severity_text = ", ".join(f"{level}: {count}" for level, count in sorted(counts.items()))
-        top = findings[:3]
+        top = findings[:5]
         lines = [
             "Stopped with partial results." if stopped else "Finished. Here is what I found:",
             f"Findings by severity: {severity_text}",
             self._severity_plain_english(counts),
         ]
-        lines.append("Key findings:")
+        lines.append("What each result means:")
         for finding in top:
             title = finding.get("title", "Finding")
             target = finding.get("target", "target")
@@ -311,7 +311,17 @@ class FloatingPrompt:
             metadata = finding.get("metadata", {})
             detail = self._finding_detail(metadata) or "See report evidence for tool output."
             meaning = self._finding_layman_meaning(title, metadata)
-            lines.append(f"- {title} on {target} ({severity}): {detail} {meaning}")
+            why = self._finding_why_it_matters(title, metadata, severity)
+            next_step = self._finding_next_step(title, metadata, severity)
+            lines.extend(
+                [
+                    f"- {title} on {target} ({severity})",
+                    f"  Result: {detail}",
+                    f"  In plain English: {meaning}",
+                    f"  Why it matters: {why}",
+                    f"  What to do next: {next_step}",
+                ]
+            )
         lines.extend(
             [
                 "Recommended next steps:",
@@ -354,12 +364,38 @@ class FloatingPrompt:
         metadata = metadata if isinstance(metadata, dict) else {}
         lowered = title.lower()
         if "nmap" in lowered or metadata.get("open_ports"):
-            return "That means the target has services listening on the network; each open service is something defenders should intentionally allow, patch, and monitor."
+            return "The target has services listening on the network. Think of each open port as a door: some doors are expected, but every open door should have a clear business reason."
         if "fingerprint" in lowered or metadata.get("technologies"):
-            return "That means the site reveals what software it uses, which helps defenders know what must be updated and helps testers choose the next safe checks."
+            return "The website is revealing what software, frameworks, or server components it uses. This is useful inventory information, and it helps decide which updates or safe checks matter."
         if "http" in lowered or metadata.get("responses"):
-            return "That means the web server answered normally, so the next step is to review headers, exposed paths, and known safe checks."
-        return "That means Agent Kal gathered evidence that should be reviewed before choosing the next test."
+            return "The web server answered Agent Kal's request. That means the site is reachable and can be checked further for headers, exposed pages, and basic configuration issues."
+        return "Agent Kal gathered evidence about the target. This is not automatically proof of a serious issue; it is information used to decide the next safe test."
+
+    def _finding_why_it_matters(self, title: str, metadata: dict, severity: str) -> str:
+        metadata = metadata if isinstance(metadata, dict) else {}
+        lowered = title.lower()
+        if "nmap" in lowered or metadata.get("open_ports"):
+            return "Attackers and defenders both start by listing exposed services. Unknown or outdated services can become entry points."
+        if "fingerprint" in lowered or metadata.get("technologies"):
+            return "Known software names and versions can be matched against patches and known vulnerabilities."
+        if "http" in lowered or metadata.get("responses"):
+            return "HTTP responses show what the public web app exposes and whether later web checks are worth running."
+        if severity in {"high", "critical"}:
+            return "Higher-severity findings can affect confidentiality, integrity, or availability and should be reviewed first."
+        return "It adds context to the security picture and helps avoid guessing."
+
+    def _finding_next_step(self, title: str, metadata: dict, severity: str) -> str:
+        metadata = metadata if isinstance(metadata, dict) else {}
+        lowered = title.lower()
+        if "nmap" in lowered or metadata.get("open_ports"):
+            return "Confirm each open service is supposed to be exposed, update it, remove anything unnecessary, then run a safe vulnerability check."
+        if "fingerprint" in lowered or metadata.get("technologies"):
+            return "Check whether the detected technologies are current, remove version leakage where possible, and test only the components in scope."
+        if "http" in lowered or metadata.get("responses"):
+            return "Review response headers, login pages, exposed directories, and known safe web checks for this host."
+        if severity in {"medium", "high", "critical"}:
+            return "Validate the finding manually, document impact, then patch or mitigate before retesting."
+        return "Keep it in the report and use it to choose the next scoped test."
 
     def _handle_launch(self, launch: LaunchRequest) -> None:
         self.pending_launch = launch

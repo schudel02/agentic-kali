@@ -29,3 +29,22 @@ def test_preview_raw_mode_keeps_event_json():
     text = prompt._preview_event_text({"time": "now", "event": "run.completed", "data": {"findings": 2}})
     assert "[now] run.completed" in text
     assert '"findings": 2' in text
+
+
+def test_summary_explains_findings_in_laymens_terms():
+    prompt = object.__new__(FloatingPrompt)
+    report = {
+        "findings": [
+            {
+                "title": "Nmap top ports scan",
+                "target": "example.com",
+                "severity": "info",
+                "metadata": {"open_ports": [{"port": 443, "state": "open", "service": "https"}]},
+            }
+        ]
+    }
+    text = prompt._summarize_results(report, {"markdown": "reports/example.md"})
+    assert "In plain English" in text
+    assert "Why it matters" in text
+    assert "What to do next" in text
+    assert "open port as a door" in text
