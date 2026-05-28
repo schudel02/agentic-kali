@@ -24,6 +24,14 @@ def test_parse_firefox_url():
     assert request.args == ("https://example.com",)
 
 
+def test_parse_run_tool_with_args_in_terminal():
+    request = parse_launch_request("run nmap -sV 127.0.0.1 in terminal")
+    assert request
+    assert request.command == "nmap"
+    assert request.args == ("-sV", "127.0.0.1")
+    assert request.terminal
+
+
 def test_clean_exec_strips_desktop_fields():
     from agentic_kali.desktop.apps import _clean_exec
 
@@ -39,7 +47,7 @@ def test_terminal_tools_skip_desktop_launch(monkeypatch):
     launched = []
     monkeypatch.setattr(apps.subprocess, "Popen", launched.append)
 
-    ok, message = apps.launch_program("setoolkit")
+    ok, message = apps.launch_program("setoolkit", terminal=True)
 
     assert ok
     assert launched == [["/usr/bin/qterminal", "-e", "/usr/bin/setoolkit"]]

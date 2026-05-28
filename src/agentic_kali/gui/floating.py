@@ -276,7 +276,7 @@ class FloatingPrompt:
                 self._say("Agent Kal", f"Admin Approved Mode: launching {launch.display_name}.")
                 if launch.privileged:
                     self._say("Agent Kal", "Kali may ask for your password in a system prompt.")
-                ok, output = launch_program(launch.command, launch.args, launch.privileged)
+                ok, output = launch_program(launch.command, launch.args, launch.privileged, launch.terminal)
                 self._gui_event("gui.launch.completed", {"tool": launch.command, "ok": ok, "message": output})
                 self.pending_launch = None if ok else launch
                 self._say("Agent Kal", output)
@@ -291,7 +291,7 @@ class FloatingPrompt:
                 self._say("Agent Kal", "Launch cancelled.")
                 self.status.set("")
                 return
-        ok, output = launch_program(launch.command, launch.args, launch.privileged)
+        ok, output = launch_program(launch.command, launch.args, launch.privileged, launch.terminal)
         self._gui_event("gui.launch.completed", {"tool": launch.command, "ok": ok, "message": output})
         self.pending_launch = None if ok else launch
         self._say("Agent Kal", output)
