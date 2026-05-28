@@ -37,9 +37,12 @@ if [ ! -f /etc/agentic-kali/config.json ]; then
   "AZURE_OPENAI_API_VERSION": "$AZURE_API_VERSION"
 }
 EOF
-  chmod 0600 /etc/agentic-kali/config.json
+  chgrp sudo /etc/agentic-kali/config.json || true
+  chmod 0660 /etc/agentic-kali/config.json
 else
   echo "Keeping existing /etc/agentic-kali/config.json"
+  chgrp sudo /etc/agentic-kali/config.json || true
+  chmod 0660 /etc/agentic-kali/config.json || true
 fi
 
 if [ ! -f /etc/agentic-kali/admin.json ]; then
@@ -51,8 +54,12 @@ path.write_text(json.dumps({
     "admin_phrase_sha256": hashlib.sha256(b"enable authorized admin mode").hexdigest()
 }, indent=2))
 PY
-  chmod 0600 /etc/agentic-kali/admin.json
 fi
+chgrp sudo /etc/agentic-kali/admin.json || true
+chmod 0660 /etc/agentic-kali/admin.json || true
+touch /etc/agentic-kali/scope.json
+chgrp sudo /etc/agentic-kali/scope.json || true
+chmod 0660 /etc/agentic-kali/scope.json || true
 
 systemctl daemon-reload || true
 

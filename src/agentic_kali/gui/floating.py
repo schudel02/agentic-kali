@@ -17,6 +17,7 @@ from agentic_kali.desktop.watch import WatchMode
 from agentic_kali.desktop.apps import LaunchRequest, launch_program, parse_launch_request
 from agentic_kali.desktop.browser import parse_browser_request, run_browser_request
 from agentic_kali.policy.models import Scope
+from agentic_kali.policy.models import ApprovalMode
 from agentic_kali.policy.admin import is_admin_phrase
 from agentic_kali.reporting.history import append_history
 from agentic_kali.setup import run_config_wizard
@@ -257,12 +258,12 @@ class FloatingPrompt:
             update={
                 "targets": targets,
                 "allowed_actions": list(dict.fromkeys([*existing.allowed_actions, *SAFE_RECON_ACTIONS])),
-                "approval_mode": "recon_only",
+                "approval_mode": ApprovalMode.RECON_ONLY,
                 "signed_permission": True,
             }
         )
         DEFAULT_SCOPE.parent.mkdir(parents=True, exist_ok=True)
-        DEFAULT_SCOPE.write_text(json.dumps(scope.model_dump(mode="json"), indent=2), encoding="utf-8")
+        self._write_scope(scope)
         return scope
 
     def _set_thinking(self, message: str) -> None:
@@ -585,14 +586,21 @@ class FloatingPrompt:
             engagement_name=fields["Engagement"].get(),
             targets=[item.strip() for item in fields["Targets"].get().split(",") if item.strip()],
             allowed_actions=[item.strip() for item in fields["Actions"].get().split(",") if item.strip()],
-            approval_mode=fields["Approval"].get(),
+            approval_mode=ApprovalMode(fields["Approval"].get()),
             intrusive_allowed=False,
             signed_permission=fields["Permission"].get() == "AUTHORIZED",
             public_targets_allowed=fields["Public Targets"].get().lower() == "true",
         )
+        self._write_scope(scope)
+        messagebox.showinfo("Agentic Kali", f"Saved {DEFAULT_SCOPE}")
+
+    def _write_scope(self, scope: Scope) -> None:
         DEFAULT_SCOPE.parent.mkdir(parents=True, exist_ok=True)
         DEFAULT_SCOPE.write_text(json.dumps(scope.model_dump(mode="json"), indent=2), encoding="utf-8")
-        messagebox.showinfo("Agentic Kali", f"Saved {DEFAULT_SCOPE}")
+        try:
+            DEFAULT_SCOPE.chmod(0o660)
+        except OSError:
+            pass
 
     def _load_scope_or_none(self) -> Scope | None:
         if not DEFAULT_SCOPE.exists():
