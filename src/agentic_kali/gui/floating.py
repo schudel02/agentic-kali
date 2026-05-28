@@ -12,7 +12,7 @@ from typing import Any
 from agentic_kali.core.orchestrator import Orchestrator
 from agentic_kali.core.planner import SAFE_RECON_ACTIONS
 from agentic_kali.ai.commands import actions_from_command
-from agentic_kali.ai.request import extract_target, summarize_request, wants_tool_run
+from agentic_kali.ai.request import extract_target, summarize_request, wants_tool_run, wants_tool_run_intent
 from agentic_kali.ai.chat import ChatSession
 from agentic_kali.desktop.watch import WatchMode
 from agentic_kali.desktop.apps import LaunchRequest, launch_program, parse_launch_request
@@ -110,6 +110,7 @@ class FloatingPrompt:
         self.stop_requested = False
         self.type_chars_on_page = 0
         self.pending_launch: LaunchRequest | None = None
+        self.last_target: str | None = None
         self.root.after(300, self._focus_prompt)
 
     def run(self) -> None:
@@ -155,16 +156,17 @@ class FloatingPrompt:
             browser_request = parse_browser_request(command)
             if browser_request:
                 self._set_thinking("")
+                self._remember_target(command)
                 self._gui_event("gui.browser.requested", {"action": browser_request.action, "value": browser_request.value})
                 self._handle_browser(browser_request)
                 return
+            target = extract_target(command) or self.last_target
             reply = self.session.reply(command)
             self._set_thinking("")
             self._say("Agent Kal", reply)
-            if not wants_tool_run(command):
+            if not self._wants_run(command, target):
                 self.status.set("")
                 return
-            target = extract_target(command)
             if target and target not in scope.targets:
                 self._say(
                     "Agent Kal",
@@ -173,6 +175,7 @@ class FloatingPrompt:
                 self.status.set("Needs scope update")
                 return
             if target:
+                self.last_target = target
                 scope = scope.model_copy(update={"targets": [target]})
             actions = actions_from_command(command, scope.allowed_actions)
             self._say("Agent Kal", summarize_request(command, actions, target))
@@ -254,6 +257,14 @@ class FloatingPrompt:
         self._gui_event("gui.browser.completed", {"action": browser_request.action, "ok": ok, "message": output})
         self._say("Agent Kal", output)
         self.status.set("" if ok else "Browser action failed")
+
+    def _remember_target(self, command: str) -> None:
+        target = extract_target(command)
+        if target:
+            self.last_target = target
+
+    def _wants_run(self, command: str, target: str | None) -> bool:
+        return wants_tool_run(command) or (target is not None and wants_tool_run_intent(command))
 
     def _run_description(self, actions: list[str], target: str) -> str:
         if "nmap_top_ports" in actions:

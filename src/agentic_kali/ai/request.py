@@ -33,6 +33,25 @@ def wants_tool_run(command: str) -> bool:
     return target is not None and any(word in text for word in run_words)
 
 
+def wants_tool_run_intent(command: str) -> bool:
+    text = command.lower()
+    run_phrases = (
+        "run vulnerability test",
+        "run vulnerability scan",
+        "vulnerability test",
+        "vulnerability scan",
+        "run tests",
+        "run test",
+        "scan it",
+        "test it",
+        "check it",
+        "scan that",
+        "test that",
+    )
+    run_words = ("scan", "test", "pentest", "check", "enumerate", "probe", "fingerprint")
+    return any(phrase in text for phrase in run_phrases) or any(word in text for word in run_words)
+
+
 def is_capability_question(command: str) -> bool:
     text = command.lower()
     phrases = (
