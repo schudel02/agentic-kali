@@ -27,7 +27,8 @@ AZURE_DEPLOYMENT="$RET"
 db_get agentic-kali/azure-api-version
 AZURE_API_VERSION="${RET:-2025-04-01-preview}"
 
-cat > /etc/agentic-kali/config.json <<EOF
+if [ ! -f /etc/agentic-kali/config.json ]; then
+  cat > /etc/agentic-kali/config.json <<EOF
 {
   "TERMS_ACCEPTED": true,
   "AZURE_OPENAI_ENDPOINT": "$AZURE_ENDPOINT",
@@ -36,7 +37,10 @@ cat > /etc/agentic-kali/config.json <<EOF
   "AZURE_OPENAI_API_VERSION": "$AZURE_API_VERSION"
 }
 EOF
-chmod 0600 /etc/agentic-kali/config.json
+  chmod 0600 /etc/agentic-kali/config.json
+else
+  echo "Keeping existing /etc/agentic-kali/config.json"
+fi
 
 systemctl daemon-reload || true
 
