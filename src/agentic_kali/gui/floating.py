@@ -403,10 +403,7 @@ class FloatingPrompt:
             return
         chunk = text[index : index + 4]
         self.chat.insert("end", chunk, tag)
-        self.type_chars_on_page += len(chunk)
-        if self.type_chars_on_page >= self._chat_page_chars():
-            self.chat.yview_scroll(1, "pages")
-            self.type_chars_on_page = 0
+        self.chat.see("end")
         self.root.after(15, lambda: self._type_text(text, index + len(chunk), tag))
 
     def _insert_message_text(self, text: str, tag: str) -> None:
