@@ -13,7 +13,7 @@ from agentic_kali.ai.commands import actions_from_command
 from agentic_kali.ai.request import extract_target, summarize_request, wants_tool_run
 from agentic_kali.ai.chat import ChatSession
 from agentic_kali.desktop.watch import WatchMode
-from agentic_kali.desktop.apps import launch_program, parse_launch_request
+from agentic_kali.desktop.apps import LaunchRequest, launch_program, parse_launch_request
 from agentic_kali.desktop.browser import parse_browser_request, run_browser_request
 from agentic_kali.policy.models import Scope
 from agentic_kali.reporting.history import append_history
@@ -84,6 +84,7 @@ class FloatingPrompt:
         self.session = ChatSession()
         self.stop_requested = False
         self.type_chars_on_page = 0
+        self.pending_launch: LaunchRequest | None = None
         self.root.after(300, self._focus_prompt)
 
     def run(self) -> None:
@@ -106,38 +107,19 @@ class FloatingPrompt:
             scope = Scope.model_validate(json.loads(DEFAULT_SCOPE.read_text(encoding="utf-8")))
             self.events = []
             command = self._last_user_message()
+            launch = parse_launch_request(command) or self._continued_launch(command)
+            if launch:
+                self._set_thinking("")
+                self._handle_launch(launch)
+                return
+            browser_request = parse_browser_request(command)
+            if browser_request:
+                self._set_thinking("")
+                self._handle_browser(browser_request)
+                return
             reply = self.session.reply(command)
             self._set_thinking("")
             self._say("Agent Kal", reply)
-            browser_request = parse_browser_request(command)
-            if browser_request:
-                approved = messagebox.askyesno(
-                    "Approve Browser Control",
-                    f"Allow Agent Kal to perform browser action: {browser_request.action} {browser_request.value}".strip(),
-                )
-                if not approved:
-                    self._say("Agent Kal", "Browser action cancelled.")
-                    self.status.set("")
-                    return
-                ok, output = run_browser_request(browser_request)
-                self._say("Agent Kal", output)
-                self.status.set("" if ok else "Browser action failed")
-                return
-            launch = parse_launch_request(command)
-            if launch:
-                if launch.risk == "approval_required":
-                    approved = messagebox.askyesno(
-                        "Approve Launch",
-                        f"Open {launch.display_name} ({launch.command})?\n\nThis is marked {launch.risk}.",
-                    )
-                    if not approved:
-                        self._say("Agent Kal", "Launch cancelled.")
-                        self.status.set("")
-                        return
-                ok, output = launch_program(launch.command, launch.args)
-                self._say("Agent Kal", output)
-                self.status.set("" if ok else "Launch failed")
-                return
             if not wants_tool_run(command):
                 self.status.set("")
                 return
@@ -176,6 +158,42 @@ class FloatingPrompt:
             self._set_thinking("")
             self._say("Agent Kal", f"I need setup before I can run: {exc}")
             messagebox.showerror("Agentic Kali", str(exc))
+
+    def _continued_launch(self, command: str) -> LaunchRequest | None:
+        if not self.pending_launch:
+            return None
+        if command.lower().strip() in {"yes", "y", "do it", "just open", "just open it", "open it"}:
+            return self.pending_launch
+        return None
+
+    def _handle_launch(self, launch: LaunchRequest) -> None:
+        self.pending_launch = launch
+        if launch.risk == "approval_required":
+            approved = messagebox.askyesno(
+                "Approve Launch",
+                f"Open {launch.display_name} ({launch.command})?\n\nThis is marked {launch.risk}.",
+            )
+            if not approved:
+                self._say("Agent Kal", "Launch cancelled.")
+                self.status.set("")
+                return
+        ok, output = launch_program(launch.command, launch.args)
+        self.pending_launch = None if ok else launch
+        self._say("Agent Kal", output)
+        self.status.set("" if ok else "Launch failed")
+
+    def _handle_browser(self, browser_request) -> None:
+        approved = messagebox.askyesno(
+            "Approve Browser Control",
+            f"Allow Agent Kal to perform browser action: {browser_request.action} {browser_request.value}".strip(),
+        )
+        if not approved:
+            self._say("Agent Kal", "Browser action cancelled.")
+            self.status.set("")
+            return
+        ok, output = run_browser_request(browser_request)
+        self._say("Agent Kal", output)
+        self.status.set("" if ok else "Browser action failed")
 
     def _set_thinking(self, message: str) -> None:
         self.root.after(0, lambda: self.thinking.set(message))
