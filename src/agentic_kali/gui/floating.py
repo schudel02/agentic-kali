@@ -164,6 +164,7 @@ class FloatingPrompt:
                 on_event=self._append_event,
                 command=command,
                 should_stop=lambda: self.stop_requested,
+                admin_mode=self.admin_mode,
             ).run()
             self.events = report.get("events", [])
             self._refresh_preview()

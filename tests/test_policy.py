@@ -32,6 +32,24 @@ def test_requires_manual_approval_mode():
     assert decision.approval_required
 
 
+def test_admin_mode_bypasses_manual_approval_but_not_permission():
+    scope = Scope(
+        engagement_name="x",
+        targets=["127.0.0.1"],
+        allowed_actions=["ping_check"],
+        approval_mode="approval_required",
+        signed_permission=True,
+    )
+    decision = PolicyGate(scope, admin_mode=True).evaluate(Action(name="ping_check", target="127.0.0.1"))
+    assert decision.allowed
+    assert not decision.approval_required
+
+    no_permission = scope.model_copy(update={"signed_permission": False})
+    denied = PolicyGate(no_permission, admin_mode=True).evaluate(Action(name="ping_check", target="127.0.0.1"))
+    assert not denied.allowed
+    assert denied.reason == "explicit permission not confirmed"
+
+
 def test_blocks_public_target_without_flag():
     scope = Scope(
         engagement_name="x",

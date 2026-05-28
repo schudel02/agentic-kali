@@ -5,8 +5,9 @@ from agentic_kali.policy.targets import is_public_target
 
 
 class PolicyGate:
-    def __init__(self, scope: Scope) -> None:
+    def __init__(self, scope: Scope, admin_mode: bool = False) -> None:
         self.scope = scope
+        self.admin_mode = admin_mode
 
     def evaluate(self, action: Action) -> PolicyDecision:
         if not self.scope.signed_permission:
@@ -24,7 +25,7 @@ class PolicyGate:
         if action.intrusive and not self.scope.intrusive_allowed:
             return self._deny(action, "intrusive action requires approval")
 
-        if self.scope.approval_mode == "approval_required":
+        if self.scope.approval_mode == "approval_required" and not self.admin_mode:
             return PolicyDecision(
                 action=action.name,
                 target=action.target,
@@ -37,7 +38,7 @@ class PolicyGate:
             action=action.name,
             target=action.target,
             allowed=True,
-            reason="allowed by scope",
+            reason="allowed by admin mode" if self.admin_mode else "allowed by scope",
         )
 
     @staticmethod

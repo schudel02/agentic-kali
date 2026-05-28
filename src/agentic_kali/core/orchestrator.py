@@ -19,11 +19,12 @@ class Orchestrator:
         on_event: Callable[[dict[str, Any]], None] | None = None,
         command: str = "",
         should_stop: Callable[[], bool] | None = None,
+        admin_mode: bool = False,
     ) -> None:
         self.scope = scope
         self.command = command
         self.should_stop = should_stop or (lambda: False)
-        self.policy = PolicyGate(scope)
+        self.policy = PolicyGate(scope, admin_mode=admin_mode)
         self.evidence = EvidenceStore(on_event=on_event)
         self.tools = ToolRegistry(self.evidence, should_stop=self.should_stop)
 
