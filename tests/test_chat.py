@@ -6,3 +6,12 @@ def test_chat_fallback():
     response = session.reply("help me scan 127.0.0.1")
     assert "scope" in response.lower() or "ready" in response.lower()
 
+
+def test_chat_explains_authorized_target():
+    response = ChatSession().reply("what do you mean by authorized target?")
+    assert "permission" in response.lower()
+
+
+def test_chat_handles_bare_target():
+    response = ChatSession().reply("127.0.0.1")
+    assert "what would you like" in response.lower()

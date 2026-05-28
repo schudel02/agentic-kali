@@ -32,6 +32,17 @@ class ChatSession:
         lower = user_message.lower()
         if is_capability_question(user_message):
             return capability_menu()
+        if "authorized target" in lower or "scope" in lower:
+            return (
+                "An authorized target is a system you have explicit permission to test. "
+                "Examples: 127.0.0.1, your lab VM IP, or a client system listed in your agreement. "
+                "I use scope to make sure I only run tests where you have permission."
+            )
+        if lower.strip().replace(".", "").isdigit() or lower.strip() == "localhost":
+            return (
+                f"I see target {user_message.strip()}. What would you like me to do with it? "
+                "You can say: quick recon, safe vulnerability check, web fingerprint, or show tests."
+            )
         capability = find_capability(lower)
         if capability:
             return (
@@ -50,4 +61,7 @@ class ChatSession:
             return "I recommend:\n" + "\n".join(f"- {tool.name}: {tool.summary} ({tool.risk})" for tool in tools)
         if "pentest" in user_message.lower() or "scan" in user_message.lower():
             return "I can help with that. First I’ll check the authorized scope, then run safe recon tools and explain each result."
-        return "I’m ready. Tell me the authorized target and what you want to learn about it."
+        return (
+            "I can help with authorized pentesting. Ask 'what all can you do?' for a menu, "
+            "or give me a scoped target and a goal like 'run quick recon on 127.0.0.1'."
+        )

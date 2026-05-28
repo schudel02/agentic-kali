@@ -38,6 +38,7 @@ def is_capability_question(command: str) -> bool:
     phrases = (
         "what can you do",
         "what can you all do",
+        "what all can you do",
         "what testing can you do",
         "show tests",
         "list tests",
