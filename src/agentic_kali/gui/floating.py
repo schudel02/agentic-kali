@@ -88,6 +88,7 @@ class FloatingPrompt:
         self.prompt_menu.add_command(label="Paste", command=self._paste_prompt)
         self.prompt_menu.add_command(label="Copy", command=self._copy_prompt_selection)
         self.prompt_menu.add_command(label="Select All", command=self._select_all_prompt)
+        tk.Button(input_frame, text="Security", command=self.show_security_settings).pack(side="right", padx=(8, 0))
         tk.Button(input_frame, text="Send", command=self.run).pack(side="right", padx=(8, 0))
 
         self.status = tk.StringVar(value="")
@@ -142,6 +143,7 @@ class FloatingPrompt:
 
         settings_menu = tk.Menu(menubar, tearoff=0)
         settings_menu.add_command(label="Settings", command=self.show_settings)
+        settings_menu.add_command(label="Security Settings", command=self.show_security_settings)
         settings_menu.add_command(label="Azure Config Wizard", command=run_config_wizard)
         menubar.add_cascade(label="Options", menu=settings_menu)
         self.root.config(menu=menubar)
@@ -1146,6 +1148,40 @@ class FloatingPrompt:
         tk.Button(window, text="Save Scope", command=lambda: self._save_scope(fields)).pack(fill="x", padx=10, pady=12)
         tk.Button(window, text="Azure Config Wizard", command=lambda: run_config_wizard()).pack(fill="x", padx=10)
 
+    def show_security_settings(self) -> None:
+        if not self.admin_mode:
+            messagebox.showinfo("Agentic Kali", "Enable Admin Mode first.")
+            return
+        scope = self._load_scope_or_none() or Scope(
+            engagement_name="local-lab",
+            targets=["127.0.0.1"],
+            allowed_actions=list(SAFE_RECON_ACTIONS),
+        )
+        window = tk.Toplevel(self.root)
+        window.title("Agentic Kali Security Settings")
+        window.attributes("-topmost", True)
+        window.geometry("560x420+500+100")
+
+        tk.Label(window, text="Current Scope Permissions", font=("TkDefaultFont", 12, "bold"), anchor="w").pack(fill="x", padx=10, pady=(10, 4))
+        tk.Label(window, text="Edits apply to /etc/agentic-kali/scope.json for the current authorized target.", anchor="w", wraplength=520).pack(fill="x", padx=10)
+
+        actions = tk.Entry(window)
+        actions.insert(0, ",".join(scope.allowed_actions))
+        targets = tk.Entry(window)
+        targets.insert(0, ",".join(scope.targets))
+        intrusive = tk.BooleanVar(value=scope.intrusive_allowed)
+        public_targets = tk.BooleanVar(value=scope.public_targets_allowed)
+
+        tk.Label(window, text="Targets", anchor="w").pack(fill="x", padx=10, pady=(12, 0))
+        targets.pack(fill="x", padx=10)
+        tk.Label(window, text="Allowed actions", anchor="w").pack(fill="x", padx=10, pady=(12, 0))
+        actions.pack(fill="x", padx=10)
+        tk.Checkbutton(window, text="Intrusive tests allowed for authorized targets", variable=intrusive).pack(anchor="w", padx=10, pady=(12, 0))
+        tk.Checkbutton(window, text="Public targets explicitly authorized", variable=public_targets).pack(anchor="w", padx=10)
+
+        tk.Label(window, text=f"Source defaults: {Path('src/agentic_kali/policy/security_settings.py')}", anchor="w", fg="#555555", wraplength=520).pack(fill="x", padx=10, pady=(12, 0))
+        tk.Button(window, text="Save Security Scope", command=lambda: self._save_security_scope(scope, targets, actions, intrusive, public_targets)).pack(fill="x", padx=10, pady=14)
+
     def show_watch_mode(self) -> None:
         try:
             scope = self._load_scope_or_none()
@@ -1191,6 +1227,25 @@ class FloatingPrompt:
         )
         self._write_scope(scope)
         messagebox.showinfo("Agentic Kali", f"Saved {DEFAULT_SCOPE}")
+
+    def _save_security_scope(
+        self,
+        existing: Scope,
+        targets: tk.Entry,
+        actions: tk.Entry,
+        intrusive: tk.BooleanVar,
+        public_targets: tk.BooleanVar,
+    ) -> None:
+        updated = existing.model_copy(
+            update={
+                "targets": [item.strip() for item in targets.get().split(",") if item.strip()],
+                "allowed_actions": [item.strip() for item in actions.get().split(",") if item.strip()],
+                "intrusive_allowed": intrusive.get(),
+                "public_targets_allowed": public_targets.get(),
+            }
+        )
+        self._write_scope(updated)
+        messagebox.showinfo("Agentic Kali", f"Saved security scope:\n{DEFAULT_SCOPE}")
 
     def _write_scope(self, scope: Scope) -> None:
         DEFAULT_SCOPE.parent.mkdir(parents=True, exist_ok=True)
