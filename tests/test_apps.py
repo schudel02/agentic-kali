@@ -38,6 +38,11 @@ def test_start_with_recon_is_not_tool_launch():
     assert parse_launch_request("lets start with recon") is None
 
 
+def test_followup_run_phrases_are_not_tool_launches():
+    assert parse_launch_request("run the next test") is None
+    assert parse_launch_request("run it") is None
+
+
 def test_clean_exec_strips_desktop_fields():
     from agentic_kali.desktop.apps import _clean_exec
 

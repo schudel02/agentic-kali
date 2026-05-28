@@ -45,6 +45,22 @@ def wants_tool_run(command: str) -> bool:
 def wants_tool_run_intent(command: str) -> bool:
     text = command.lower()
     run_phrases = (
+        "continue",
+        "continue testing",
+        "keep going",
+        "next",
+        "next step",
+        "next test",
+        "do next",
+        "do the next",
+        "run next",
+        "run the next",
+        "run the next test",
+        "proceed",
+        "proceed with",
+        "what next",
+        "what else",
+        "what else should i test",
         "run vulnerability test",
         "run vulnerability scan",
         "vulnerability test",
@@ -63,6 +79,16 @@ def wants_tool_run_intent(command: str) -> bool:
         "check it",
         "scan that",
         "test that",
+        "check that",
+        "run it",
+        "run that",
+        "map it",
+        "map that",
+        "map the domain",
+        "check services",
+        "check the services",
+        "test those",
+        "scan those",
     )
     run_words = ("scan", "test", "pentest", "check", "enumerate", "probe", "fingerprint", "recon", "mapping")
     return any(phrase in text for phrase in run_phrases) or any(word in text for word in run_words)

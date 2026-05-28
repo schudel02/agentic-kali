@@ -17,3 +17,7 @@ def test_wants_tool_run_intent_without_target():
     assert wants_tool_run_intent("scan it")
     assert wants_tool_run_intent("lets start with recon")
     assert wants_tool_run_intent("proceed with domain mapping")
+    assert wants_tool_run_intent("what else should I test")
+    assert wants_tool_run_intent("run the next test")
+    assert wants_tool_run_intent("continue")
+    assert wants_tool_run_intent("map it")
