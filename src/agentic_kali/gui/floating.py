@@ -19,6 +19,7 @@ from agentic_kali.ai.chat import ChatSession
 from agentic_kali.desktop.watch import WatchMode
 from agentic_kali.desktop.apps import LaunchRequest, launch_program, parse_launch_request
 from agentic_kali.desktop.browser import parse_browser_request, run_browser_request
+from agentic_kali.desktop.lab import LabServer, parse_lab_request, start_lab_server
 from agentic_kali.policy.models import Scope
 from agentic_kali.policy.models import ApprovalMode
 from agentic_kali.policy.admin import is_admin_phrase
@@ -117,6 +118,7 @@ class FloatingPrompt:
         self.type_chars_on_page = 0
         self.pending_launch: LaunchRequest | None = None
         self.last_target: str | None = None
+        self.lab_servers: list[LabServer] = []
         self.countdown_after: str | None = None
         self.countdown_remaining = 0
         self.root.after(300, self._focus_prompt)
@@ -154,6 +156,11 @@ class FloatingPrompt:
                 self._set_thinking("")
                 self._say("Agent Kal", "Admin Approved Mode enabled for this session. I will still stay inside scope and log every action.")
                 self.status.set("Admin Approved Mode")
+                return
+            lab_request = parse_lab_request(command)
+            if lab_request:
+                self._set_thinking("")
+                self._handle_lab_request(scope, lab_request)
                 return
             launch = parse_launch_request(command) or self._continued_launch(command)
             if launch:
@@ -296,6 +303,35 @@ class FloatingPrompt:
         self.pending_launch = None if ok else launch
         self._say("Agent Kal", output)
         self.status.set("" if ok else "Launch failed")
+
+    def _handle_lab_request(self, scope: Scope, lab_request) -> None:
+        try:
+            server = start_lab_server(lab_request)
+        except Exception as exc:
+            self._say("Agent Kal", f"I could not start the local lab server: {exc}")
+            self.status.set("Lab start failed")
+            return
+        self.lab_servers.append(server)
+        self.last_target = server.url
+        updated = scope.model_copy(
+            update={
+                "targets": list(dict.fromkeys([*scope.targets, server.url])),
+                "allowed_actions": list(dict.fromkeys([*scope.allowed_actions, *SAFE_RECON_ACTIONS])),
+                "approval_mode": ApprovalMode.RECON_ONLY,
+                "signed_permission": True,
+            }
+        )
+        self._write_scope(updated)
+        self._gui_event("lab.started", {"url": server.url, "path": str(server.path)})
+        self._say(
+            "Agent Kal",
+            "Local test server started.\n"
+            f"- URL: {server.url}\n"
+            f"- Files: {server.path}\n"
+            "- Scope was updated automatically because this is a local lab target.\n\n"
+            "You can now say `run vulnerability test` or `run quick recon` and I will use this local server.",
+        )
+        self.status.set(f"Local lab running: {server.url}")
 
     def _handle_browser(self, browser_request) -> None:
         if not self.admin_mode:
