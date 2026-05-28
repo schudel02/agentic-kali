@@ -162,6 +162,17 @@ class FloatingPrompt:
                 self._set_thinking("")
                 self._handle_lab_request(scope, lab_request)
                 return
+            target = extract_target(command) or self.last_target
+            if target and self._wants_run(command, target):
+                self.last_target = target
+                self._set_thinking("")
+                scope = self._ensure_consent(scope, target)
+                if not scope:
+                    self._say("Agent Kal", "I paused the test because written consent was not confirmed.")
+                    self.status.set("Consent required")
+                    return
+                self._run_scoped_tests(command, scope, target)
+                return
             launch = parse_launch_request(command) or self._continued_launch(command)
             if launch:
                 self._set_thinking("")
@@ -180,7 +191,6 @@ class FloatingPrompt:
                 self._gui_event("gui.browser.requested", {"action": browser_request.action, "value": browser_request.value})
                 self._handle_browser(browser_request)
                 return
-            target = extract_target(command) or self.last_target
             wants_run = self._wants_run(command, target)
             if not wants_run:
                 reply = self.session.reply(command)
@@ -196,36 +206,39 @@ class FloatingPrompt:
                 self._say("Agent Kal", "I paused the test because written consent was not confirmed.")
                 self.status.set("Consent required")
                 return
-            actions = actions_from_command(command, scope.allowed_actions)
-            self._say("Agent Kal", summarize_request(command, actions, target))
-            self._note(self._run_description(actions, target or ", ".join(scope.targets)))
-            self._gui_event("run.preparing", {"target": target or scope.targets, "actions": actions})
-            self._enter_run_mode(actions)
-            report = Orchestrator(
-                scope,
-                on_event=self._append_event,
-                command=command,
-                should_stop=lambda: self.stop_requested,
-                admin_mode=self.admin_mode,
-            ).run()
-            self.events = report.get("events", [])
-            self._refresh_preview()
-            files = write_reports(report)
-            report["report_files"] = files
-            append_history(report)
-            if self.stop_requested:
-                self._say("Agent Kal", self._summarize_results(report, files, stopped=True))
-                self.status.set("Stopped")
-            else:
-                self._say("Agent Kal", self._summarize_results(report, files))
-                self.status.set(f"Done: {files['markdown']}")
-            self._exit_run_mode()
+            self._run_scoped_tests(command, scope, target)
         except Exception as exc:
             self._exit_run_mode()
             self.status.set("Error")
             self._set_thinking("")
             self._say("Agent Kal", f"I need setup before I can run: {exc}")
             messagebox.showerror("Agentic Kali", str(exc))
+
+    def _run_scoped_tests(self, command: str, scope: Scope, target: str | None) -> None:
+        actions = actions_from_command(command, scope.allowed_actions)
+        self._say("Agent Kal", summarize_request(command, actions, target))
+        self._note(self._run_description(actions, target or ", ".join(scope.targets)))
+        self._gui_event("run.preparing", {"target": target or scope.targets, "actions": actions})
+        self._enter_run_mode(actions)
+        report = Orchestrator(
+            scope,
+            on_event=self._append_event,
+            command=command,
+            should_stop=lambda: self.stop_requested,
+            admin_mode=self.admin_mode,
+        ).run()
+        self.events = report.get("events", [])
+        self._refresh_preview()
+        files = write_reports(report)
+        report["report_files"] = files
+        append_history(report)
+        if self.stop_requested:
+            self._say("Agent Kal", self._summarize_results(report, files, stopped=True))
+            self.status.set("Stopped")
+        else:
+            self._say("Agent Kal", self._summarize_results(report, files))
+            self.status.set(f"Done: {files['markdown']}")
+        self._exit_run_mode()
 
     def _continued_launch(self, command: str) -> LaunchRequest | None:
         if not self.pending_launch:
