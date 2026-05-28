@@ -44,8 +44,13 @@ class FloatingPrompt:
         self.preview_mode = tk.StringVar(value="transcript")
         self._build_menus()
 
-        chat_frame = tk.Frame(self.root)
-        chat_frame.pack(fill="both", expand=True, padx=10, pady=(10, 6))
+        self.title_text = tk.StringVar(value="Agent Kal V.1")
+        tk.Label(self.root, textvariable=self.title_text, anchor="w", font=("TkDefaultFont", 11, "bold"), fg="#174ea6").pack(fill="x", padx=10, pady=(8, 0))
+
+        self.body_frame = tk.Frame(self.root)
+        self.body_frame.pack(fill="both", expand=True, padx=10, pady=(8, 6))
+        chat_frame = tk.Frame(self.body_frame)
+        chat_frame.pack(side="left", fill="both", expand=True)
         self.chat = tk.Text(chat_frame, height=20, wrap="word")
         self.chat_scroll = tk.Scrollbar(chat_frame, orient="vertical", command=self.chat.yview)
         self.chat.configure(yscrollcommand=self.chat_scroll.set)
@@ -88,7 +93,7 @@ class FloatingPrompt:
         self.prompt_menu.add_command(label="Paste", command=self._paste_prompt)
         self.prompt_menu.add_command(label="Copy", command=self._copy_prompt_selection)
         self.prompt_menu.add_command(label="Select All", command=self._select_all_prompt)
-        tk.Button(input_frame, text="Security", command=self.show_security_settings).pack(side="right", padx=(8, 0))
+        self.security_button = tk.Button(input_frame, text="Security", command=self.show_security_settings)
         tk.Button(input_frame, text="Send", command=self.run).pack(side="right", padx=(8, 0))
 
         self.status = tk.StringVar(value="")
@@ -112,7 +117,9 @@ class FloatingPrompt:
         tk.Button(frame, text="Quit", command=self.root.destroy).pack(side="right")
 
         self.preview: tk.Toplevel | None = None
+        self.preview_embedded: tk.Frame | None = None
         self.preview_text: tk.Text | None = None
+        self.normal_geometry = self.root.geometry()
         self.events: list[dict[str, Any]] = []
         self.session = ChatSession()
         self.stop_requested = False
@@ -162,6 +169,17 @@ class FloatingPrompt:
         self.status.set("Stopping...")
         self._set_thinking("")
 
+    def _set_admin_ui(self) -> None:
+        self.root.after(0, self._enable_admin_ui)
+
+    def _enable_admin_ui(self) -> None:
+        self.title_text.set("[Admin Mode] - Agent Kal V.1")
+        self.root.title("Agentic Kali - Admin Mode")
+        try:
+            self.security_button.pack(side="right", padx=(8, 0))
+        except tk.TclError:
+            pass
+
     def _run_agent(self) -> None:
         try:
             self._set_thinking("Thinking through your request...")
@@ -179,6 +197,7 @@ class FloatingPrompt:
             if is_admin_phrase(command):
                 self.admin_mode = True
                 self._set_thinking("")
+                self._set_admin_ui()
                 self._say("Agent Kal", "Admin Approved Mode enabled for this session. I will still stay inside scope and log every action.")
                 self.status.set("Admin Approved Mode")
                 return
@@ -567,8 +586,13 @@ class FloatingPrompt:
         if self.countdown_after:
             self.root.after_cancel(self.countdown_after)
             self.countdown_after = None
+        if self.preview_embedded and self.preview_embedded.winfo_exists():
+            self.preview_embedded.destroy()
+            self.preview_embedded = None
+            self.preview_text = None
+            self.root.geometry(self.normal_geometry)
         self.mode.set("Chat Prompt")
-        self.root.title("Agentic Kali")
+        self.root.title("Agentic Kali - Admin Mode" if self.admin_mode else "Agentic Kali")
 
     def _estimate_seconds(self, actions: list[str]) -> int:
         estimates = {
@@ -923,21 +947,31 @@ class FloatingPrompt:
         self._append_preview_event(event)
 
     def show_preview(self, attached: bool = False) -> None:
+        if attached:
+            self._show_embedded_preview()
+            return
         if self.preview and self.preview.winfo_exists():
-            if attached:
-                self._attach_preview()
             self.preview.lift()
             return
 
         self.preview = tk.Toplevel(self.root)
         self.preview.title("Agentic Kali Live View")
         self.preview.attributes("-topmost", True)
-        if attached:
-            self._attach_preview()
-        else:
-            self.preview.geometry("680x520+480+40")
+        self.preview.geometry("680x520+480+40")
         frame = tk.Frame(self.preview)
         frame.pack(fill="both", expand=True, padx=8, pady=8)
+        self._build_preview_panel(frame)
+
+    def _show_embedded_preview(self) -> None:
+        if self.preview_embedded and self.preview_embedded.winfo_exists():
+            return
+        self.normal_geometry = self.root.geometry()
+        self.root.geometry("1180x520+40+40")
+        self.preview_embedded = tk.Frame(self.body_frame, borderwidth=1, relief="groove")
+        self.preview_embedded.pack(side="right", fill="both", expand=True, padx=(8, 0))
+        self._build_preview_panel(self.preview_embedded)
+
+    def _build_preview_panel(self, frame: tk.Frame) -> None:
         toolbar = tk.Frame(frame)
         toolbar.pack(fill="x", pady=(0, 6))
         tk.Radiobutton(toolbar, text="Transcript", variable=self.preview_mode, value="transcript", command=self._refresh_preview).pack(side="left")
@@ -987,9 +1021,6 @@ class FloatingPrompt:
                 self.preview_text.delete("1.0", "end")
             segments = self._preview_event_segments(event)
             if not segments:
-                return
-            if animated and any(tag.startswith("transcript_") for _text, tag in segments):
-                self._type_preview_segments(segments, scroll)
                 return
             for text, tag in segments:
                 self.preview_text.insert("end", text, tag)
@@ -1076,7 +1107,7 @@ class FloatingPrompt:
             action = data.get("action", "a tool") if isinstance(data, dict) else "a tool"
             return self._action_explanation(action, target)
         if name == "tool.description":
-            return data.get("description", "Running selected tool.") if isinstance(data, dict) else "Running selected tool."
+            return ""
         if name.startswith("tool."):
             tool = name.removeprefix("tool.").replace("_", " ")
             found = data.get("found", True) if isinstance(data, dict) else True
