@@ -42,6 +42,7 @@ class FloatingPrompt:
         self.prompt = tk.Entry(self.root)
         self.prompt.pack(fill="x", padx=10, pady=(0, 6))
         self.prompt.bind("<Return>", lambda _event: self.run())
+        self.prompt.bind("<Button-1>", lambda _event: self.prompt.focus_set())
 
         self.status = tk.StringVar(value="Ready")
         tk.Label(self.root, textvariable=self.status, anchor="w").pack(fill="x", padx=10)
@@ -68,6 +69,7 @@ class FloatingPrompt:
         self.preview_text: tk.Text | None = None
         self.events: list[dict[str, Any]] = []
         self.session = ChatSession()
+        self.root.after(300, self._focus_prompt)
 
     def run(self) -> None:
         command = self.prompt.get().strip()
@@ -134,6 +136,7 @@ class FloatingPrompt:
 
     def _type_text(self, text: str, index: int = 0) -> None:
         if index >= len(text):
+            self._focus_prompt()
             return
         self.chat.configure(state="normal")
         chunk = text[index : index + 3]
@@ -141,6 +144,14 @@ class FloatingPrompt:
         self.chat.see("end")
         self.chat.configure(state="disabled")
         self.root.after(18, lambda: self._type_text(text, index + len(chunk)))
+
+    def _focus_prompt(self) -> None:
+        try:
+            self.prompt.configure(state="normal")
+            self.prompt.focus_set()
+            self.prompt.focus_force()
+        except tk.TclError:
+            pass
 
     def _last_user_message(self) -> str:
         text = self.chat.get("1.0", "end")
