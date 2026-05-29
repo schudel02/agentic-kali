@@ -14,6 +14,7 @@ from typing import Any
 from agentic_kali.core.orchestrator import Orchestrator
 from agentic_kali.policy.security_settings import ADMIN_GUARDRAILS, ALL_ACTIONS, ALL_ADMIN_ACTIONS, SAFE_RECON_ACTIONS, UNSAFE_BUILD_TERMS, all_blocked_build_terms, load_admin_guardrails
 from agentic_kali.ai.commands import actions_from_command, is_auto_command
+from agentic_kali.ai.request import is_autonomous_request
 from agentic_kali.ai.request import extract_target, summarize_request, wants_tool_run, wants_tool_run_intent
 from agentic_kali.ai.chat import ChatSession
 from agentic_kali.desktop.watch import WatchMode
@@ -136,6 +137,7 @@ class FloatingPrompt:
         self._last_suggested_target: str | None = None
         self._awaiting_tool_selection: bool = False
         self._tool_selection_target: str | None = None
+        self._awaiting_autonomous_goal: bool = False
         self.root.after(300, self._show_mode_dialog)
 
     def _build_menus(self) -> None:
@@ -177,6 +179,9 @@ class FloatingPrompt:
         self.stop_requested = True
         self.say_queue.clear()
         self.speaking = False
+        self._awaiting_autonomous_goal = False
+        self._awaiting_tool_selection = False
+        self._tool_selection_target = None
         stop_all_commands()
         self.status.set("Stopped")
         self._set_thinking("")
@@ -243,6 +248,24 @@ class FloatingPrompt:
                 self._say("Agent Kal", "Admin Approved Mode enabled. All guardrails bypassed for this session.")
                 self.status.set("Admin Approved Mode")
                 return
+            # Handle pending autonomous goal selection
+            if self._awaiting_autonomous_goal:
+                self._awaiting_autonomous_goal = False
+                self._set_thinking("")
+                _goal_map = {"1": "recon", "2": "web audit", "3": "vulnerability scan", "4": "full pentest"}
+                goal = _goal_map.get(command.strip(), command.lower().strip())
+                target = self.last_target
+                if not target:
+                    self._say("Agent Kal", "What target should I run this on? Give me an IP or domain.")
+                    self._awaiting_autonomous_goal = True
+                    return
+                scope = self._ensure_consent(scope, target)
+                if not scope:
+                    self._say("Agent Kal", "Auth required.")
+                    return
+                self._run_scoped_tests(command, scope, target, autonomous=True, goal=goal)
+                return
+
             # Handle pending tool selection response
             if self._awaiting_tool_selection and self._tool_selection_target:
                 target = self._tool_selection_target
@@ -284,6 +307,22 @@ class FloatingPrompt:
                 self._say("Agent Kal", "Target?")
                 self.status.set("Target required")
                 return
+            if is_autonomous_request(command) and self.admin_mode:
+                self._awaiting_autonomous_goal = True
+                self._set_thinking("")
+                self._say(
+                    "Agent Kal",
+                    "Autonomous mode. What kind of tests?\n\n"
+                    "  1. Recon — ping, port scan, web fingerprint, HTTP probe\n"
+                    "  2. Web Audit — fingerprint, nuclei, directory discovery, Nikto\n"
+                    "  3. Vulnerability Scan — nuclei full, Nikto, sqlmap\n"
+                    "  4. Full Pentest — everything available\n\n"
+                    f"Target: {target or self.last_target or '(tell me the target first)'}\n"
+                    "Reply with a number or name.",
+                )
+                self.status.set("Awaiting test type selection")
+                return
+
             if target and self._wants_run(command, target):
                 self.last_target = target
                 self._set_thinking("")
@@ -347,7 +386,7 @@ class FloatingPrompt:
             self._say("Agent Kal", f"I need setup before I can run: {exc}")
             messagebox.showerror("Agentic Kali", str(exc))
 
-    def _run_scoped_tests(self, command: str, scope: Scope, target: str | None, autonomous: bool = False) -> None:
+    def _run_scoped_tests(self, command: str, scope: Scope, target: str | None, autonomous: bool = False, goal: str = "") -> None:
         if self.admin_mode:
             scope = scope.model_copy(update={
                 "allowed_actions": list(dict.fromkeys([*scope.allowed_actions, *ALL_ADMIN_ACTIONS])),
@@ -356,7 +395,8 @@ class FloatingPrompt:
             })
         actions = actions_from_command(command, scope.allowed_actions)
         if autonomous:
-            self._say("Agent Kal", f"Autonomous mode: I will choose and chain tools independently for {target or 'the target'}. I'll stop when I run out of useful next steps or you press Stop.")
+            goal_label = goal or "full assessment"
+            self._say("Agent Kal", f"Starting autonomous {goal_label} on {target or 'the target'}. I will run tools, read the results, and decide what to run next. Press Stop at any time.")
         else:
             self._say("Agent Kal", self._short_run_summary(command, actions, target))
         self._note(self._run_description(actions, target or ", ".join(scope.targets)))
@@ -369,6 +409,7 @@ class FloatingPrompt:
             should_stop=lambda: self.stop_requested,
             admin_mode=self.admin_mode,
             autonomous=autonomous,
+            goal=goal,
         ).run()
         self.events = report.get("events", [])
         self._refresh_preview()
@@ -1543,6 +1584,7 @@ class FloatingPrompt:
         self._last_suggested_target = None
         self._awaiting_tool_selection = False
         self._tool_selection_target = None
+        self._awaiting_autonomous_goal = False
         self.status.set("")
         self._set_thinking("")
         self.root.title("Agentic Kali")

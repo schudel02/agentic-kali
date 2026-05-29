@@ -103,6 +103,29 @@ def wants_tool_run_intent(command: str) -> bool:
     return any(phrase in text for phrase in run_phrases) or any(word in text for word in run_words)
 
 
+_AUTONOMOUS_PHRASES = (
+    "run tests autonomously",
+    "run autonomously",
+    "test autonomously",
+    "autonomous test",
+    "autonomous scan",
+    "autonomous recon",
+    "run on your own",
+    "run by yourself",
+    "run everything",
+    "run independently",
+    "go autonomous",
+    "auto test",
+    "auto scan",
+    "auto recon",
+)
+
+
+def is_autonomous_request(command: str) -> bool:
+    text = command.lower()
+    return any(phrase in text for phrase in _AUTONOMOUS_PHRASES)
+
+
 def is_capability_question(command: str) -> bool:
     text = command.lower()
     phrases = (
