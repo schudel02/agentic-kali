@@ -140,6 +140,10 @@ class FloatingPrompt:
         self._awaiting_autonomous_goal: bool = False
         self._awaiting_autonomous_target: bool = False
         self._pending_autonomous_goal: str = ""
+        self._tool_timer_var: tk.StringVar = tk.StringVar(value="")
+        self._tool_timer_after: str | None = None
+        self._tool_timer_remaining: int = 0
+        self._current_tool_label: tk.StringVar = tk.StringVar(value="")
         self.root.after(300, self._show_mode_dialog)
 
     def _build_menus(self) -> None:
@@ -186,6 +190,7 @@ class FloatingPrompt:
         self._pending_autonomous_goal = ""
         self._awaiting_tool_selection = False
         self._tool_selection_target = None
+        self._stop_tool_timer()
         stop_all_commands()
         self.status.set("Stopped")
         self._set_thinking("")
@@ -948,16 +953,65 @@ class FloatingPrompt:
         self.mode.set("Chat Prompt")
         self.root.title("Agentic Kali - Admin Mode" if self.admin_mode else "Agentic Kali")
 
+    _TOOL_ESTIMATES: dict[str, int] = {
+        "ping_check": 5,
+        "nmap_top_ports": 180, "nmap_full": 600, "nmap_udp": 300, "nmap_vuln": 300,
+        "whatweb": 45, "httpx_probe": 45,
+        "nuclei_safe": 240, "nuclei_full": 480,
+        "nikto_scan": 360, "wpscan": 300,
+        "gobuster_dir": 300, "gobuster_dns": 300,
+        "ffuf_fuzz": 240, "dirb": 180, "dirsearch": 240, "feroxbuster": 300,
+        "sqlmap_safe": 240, "sqlmap_full": 480,
+        "hydra_brute": 240, "medusa": 240,
+        "john_crack": 120, "hashcat": 120,
+        "dnsrecon": 60, "dnsenum": 90, "amass_passive": 120,
+        "subfinder": 60, "sublist3r": 90, "theharvester": 90,
+        "dmitry": 30, "sherlock": 30,
+        "autorecon": 600, "enum4linux": 120,
+        "crackmapexec": 60, "netexec": 60,
+        "bloodhound": 60,
+        "ettercap": 120, "bettercap": 120, "responder": 120,
+        "tcpdump": 60, "snort": 60,
+        "wifite": 120, "reaver": 300, "aircrack_ng": 120,
+        "spiderfoot": 180, "recon_ng": 60,
+    }
+
     def _estimate_seconds(self, actions: list[str]) -> int:
-        estimates = {
-            "ping_check": 5,
-            "nmap_top_ports": 180,
-            "whatweb": 45,
-            "httpx_probe": 45,
-            "nuclei_safe": 240,
-            "sqlmap_safe": 240,
-        }
-        return max(30, sum(estimates.get(action, 60) for action in actions))
+        return max(30, sum(self._TOOL_ESTIMATES.get(a, 60) for a in actions))
+
+    def _tool_estimate(self, action: str) -> int:
+        return self._TOOL_ESTIMATES.get(action, 60)
+
+    def _start_tool_timer(self, action: str, target: str) -> None:
+        if self._tool_timer_after:
+            self.root.after_cancel(self._tool_timer_after)
+            self._tool_timer_after = None
+        from agentic_kali.tools.catalog import TOOLS as _CAT
+        tool = _CAT.get(action)
+        cmd = tool.command if tool else action
+        summary = tool.summary if tool else action.replace("_", " ")
+        self._current_tool_label.set(f"▶  {cmd}  —  {summary[:55]}")
+        self._tool_timer_remaining = self._tool_estimate(action)
+        self._tick_tool_timer()
+
+    def _tick_tool_timer(self) -> None:
+        remaining = max(0, self._tool_timer_remaining)
+        mins, secs = divmod(remaining, 60)
+        self._tool_timer_var.set(f"~{mins:02d}:{secs:02d}")
+        if remaining <= 0:
+            self._tool_timer_var.set("finishing...")
+            self._tool_timer_after = None
+            return
+        self._tool_timer_remaining -= 1
+        self._tool_timer_after = self.root.after(1000, self._tick_tool_timer)
+
+    def _stop_tool_timer(self) -> None:
+        if self._tool_timer_after:
+            self.root.after_cancel(self._tool_timer_after)
+            self._tool_timer_after = None
+        self._tool_timer_var.set("done")
+        self.root.after(2000, lambda: self._tool_timer_var.set(""))
+        self.root.after(2000, lambda: self._current_tool_label.set(""))
 
     def _start_countdown(self, seconds: int) -> None:
         self.countdown_remaining = seconds
@@ -1302,6 +1356,14 @@ class FloatingPrompt:
     def _record_event(self, event: dict[str, Any]) -> None:
         self.events.append(event)
         self._append_preview_event(event)
+        name = event.get("event", "")
+        data = event.get("data", {})
+        if name == "action.started" and isinstance(data, dict):
+            action = data.get("action", "")
+            target = data.get("target", "")
+            self._start_tool_timer(action, target)
+        elif name.startswith("tool.") or name in {"run.completed", "run.stopped"}:
+            self._stop_tool_timer()
 
     def show_preview(self, attached: bool = False) -> None:
         if attached:
@@ -1330,9 +1392,18 @@ class FloatingPrompt:
 
     def _build_preview_panel(self, frame: tk.Frame) -> None:
         toolbar = tk.Frame(frame)
-        toolbar.pack(fill="x", pady=(0, 6))
+        toolbar.pack(fill="x", pady=(0, 4))
         tk.Radiobutton(toolbar, text="Transcript", variable=self.preview_mode, value="transcript", command=self._refresh_preview).pack(side="left")
         tk.Radiobutton(toolbar, text="Raw Events", variable=self.preview_mode, value="raw", command=self._refresh_preview).pack(side="left", padx=8)
+
+        # Per-tool status bar
+        tool_bar = tk.Frame(frame, bg="#1a1a2e", pady=4)
+        tool_bar.pack(fill="x")
+        tk.Label(tool_bar, textvariable=self._current_tool_label, bg="#1a1a2e", fg="#00d4ff",
+                 font=("Courier", 10, "bold"), anchor="w", padx=8).pack(side="left", fill="x", expand=True)
+        tk.Label(tool_bar, textvariable=self._tool_timer_var, bg="#1a1a2e", fg="#ffcc00",
+                 font=("Courier", 11, "bold"), anchor="e", padx=8).pack(side="right")
+
         self.preview_text = tk.Text(frame, wrap="word")
         self.preview_text.tag_configure("transcript_header", lmargin1=42, lmargin2=42, rmargin=42, spacing1=10, font=("TkDefaultFont", 9, "bold"), foreground="#174ea6")
         self.preview_text.tag_configure("transcript_action", lmargin1=72, lmargin2=72, rmargin=72, spacing1=3, spacing3=8, font=("Serif", 11, "italic"))
@@ -1462,6 +1533,19 @@ class FloatingPrompt:
             return ""
         if name == "action.started":
             action = data.get("action", "a tool") if isinstance(data, dict) else "a tool"
+            from agentic_kali.tools.catalog import TOOLS as _CAT
+            tool = _CAT.get(action)
+            if tool:
+                estimate = self._tool_estimate(action)
+                mins, secs = divmod(estimate, 60)
+                time_str = f"{mins}m {secs:02d}s" if mins else f"{secs}s"
+                return (
+                    f"CALLING TOOL: {tool.command}\n"
+                    f"Action: {action}\n"
+                    f"Target: {target}\n"
+                    f"Summary: {tool.summary}\n"
+                    f"Category: {tool.category}  |  Estimated time: {time_str}"
+                )
             return self._action_explanation(action, target)
         if name == "tool.description":
             return ""
