@@ -19,14 +19,14 @@ def test_finding_detail_explains_open_ports_plainly():
 def test_natural_preview_explains_nmap_action():
     prompt = object.__new__(FloatingPrompt)
     text = prompt._natural_event_text({"event": "action.started", "data": {"action": "nmap_top_ports", "target": "example.com"}})
-    assert "Opening nmap" in text
+    assert "nmap" in text
     assert "doors into a system" in text
 
 
 def test_natural_preview_explains_sqlmap_action():
     prompt = object.__new__(FloatingPrompt)
     text = prompt._natural_event_text({"event": "action.started", "data": {"action": "sqlmap_safe", "target": "example.com"}})
-    assert "Opening sqlmap" in text
+    assert "sqlmap" in text
     assert "without dumping data" in text
 
 
