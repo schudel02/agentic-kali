@@ -6,5 +6,5 @@ def test_history_round_trip(tmp_path):
     append_history({"engagement": "x", "targets": ["127.0.0.1"], "findings": [{}]}, path)
     history = read_history(path)
     assert history[0]["engagement"] == "x"
-    assert history[0]["findings"] == 1
+    assert len(history[0]["findings"]) == 1
 

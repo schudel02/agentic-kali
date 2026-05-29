@@ -13,8 +13,13 @@ KEYWORDS = {
 }
 
 
-def actions_from_command(command: str, allowed_actions: list[str]) -> list[str]:
+def actions_from_command(
+    command: str,
+    allowed_actions: list[str],
+    already_done: list[str] | None = None,
+) -> list[str]:
     text = command.lower()
+    done = set(already_done or [])
     selected = [
         action
         for action, keywords in KEYWORDS.items()
@@ -22,5 +27,7 @@ def actions_from_command(command: str, allowed_actions: list[str]) -> list[str]:
     ]
     if selected:
         return selected
-    return [action for action in ALL_ACTIONS if action in allowed_actions]
+    # No keyword match — return allowed actions not yet completed
+    remaining = [a for a in ALL_ACTIONS if a in allowed_actions and a not in done]
+    return remaining or [action for action in ALL_ACTIONS if action in allowed_actions]
 
