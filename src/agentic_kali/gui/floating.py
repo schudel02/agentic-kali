@@ -138,6 +138,8 @@ class FloatingPrompt:
         self._awaiting_tool_selection: bool = False
         self._tool_selection_target: str | None = None
         self._awaiting_autonomous_goal: bool = False
+        self._awaiting_autonomous_target: bool = False
+        self._pending_autonomous_goal: str = ""
         self.root.after(300, self._show_mode_dialog)
 
     def _build_menus(self) -> None:
@@ -180,6 +182,8 @@ class FloatingPrompt:
         self.say_queue.clear()
         self.speaking = False
         self._awaiting_autonomous_goal = False
+        self._awaiting_autonomous_target = False
+        self._pending_autonomous_goal = ""
         self._awaiting_tool_selection = False
         self._tool_selection_target = None
         stop_all_commands()
@@ -248,16 +252,36 @@ class FloatingPrompt:
                 self._say("Agent Kal", "Admin Approved Mode enabled. All guardrails bypassed for this session.")
                 self.status.set("Admin Approved Mode")
                 return
+            # Handle pending autonomous target (after goal was already selected)
+            if self._awaiting_autonomous_target:
+                self._awaiting_autonomous_target = False
+                self._set_thinking("")
+                target = extract_target(command) or command.strip()
+                if not target:
+                    self._say("Agent Kal", "I need a valid IP address or domain name.")
+                    self._awaiting_autonomous_target = True
+                    return
+                self.last_target = target
+                goal = self._pending_autonomous_goal
+                self._pending_autonomous_goal = ""
+                scope = self._ensure_consent(scope, target)
+                if not scope:
+                    self._say("Agent Kal", "Auth required.")
+                    return
+                self._run_scoped_tests(command, scope, target, autonomous=True, goal=goal)
+                return
+
             # Handle pending autonomous goal selection
             if self._awaiting_autonomous_goal:
                 self._awaiting_autonomous_goal = False
                 self._set_thinking("")
                 _goal_map = {"1": "recon", "2": "web audit", "3": "vulnerability scan", "4": "full pentest"}
-                goal = _goal_map.get(command.strip(), command.lower().strip())
+                goal = _goal_map.get(command.strip().rstrip("."), command.lower().strip())
                 target = self.last_target
                 if not target:
-                    self._say("Agent Kal", "What target should I run this on? Give me an IP or domain.")
-                    self._awaiting_autonomous_goal = True
+                    self._pending_autonomous_goal = goal
+                    self._awaiting_autonomous_target = True
+                    self._say("Agent Kal", f"Goal: {goal}. What target? Give me an IP or domain.")
                     return
                 scope = self._ensure_consent(scope, target)
                 if not scope:
@@ -1585,6 +1609,8 @@ class FloatingPrompt:
         self._awaiting_tool_selection = False
         self._tool_selection_target = None
         self._awaiting_autonomous_goal = False
+        self._awaiting_autonomous_target = False
+        self._pending_autonomous_goal = ""
         self.status.set("")
         self._set_thinking("")
         self.root.title("Agentic Kali")
