@@ -461,10 +461,10 @@ class FloatingPrompt:
         report["report_files"] = files
         append_history(report)
         if self.stop_requested:
-            self._say("Agent Kal", self._summarize_results(report, files, stopped=True))
+            self._say_static("Agent Kal", self._summarize_results(report, files, stopped=True))
             self.status.set("Stopped")
         else:
-            self._say("Agent Kal", self._summarize_results(report, files))
+            self._say_static("Agent Kal", self._summarize_results(report, files))
             self.status.set(f"Done: {files['markdown']}")
         if target:
             self.last_target = target
@@ -1153,6 +1153,23 @@ class FloatingPrompt:
     def _say(self, speaker: str, message: str, animated: bool = False) -> None:
         self.root.after(0, lambda: self._enqueue_say(speaker, message, animated))
 
+    def _say_static(self, speaker: str, message: str) -> None:
+        """Insert message without animation — safe for long results that must not be cut short."""
+        self.root.after(0, lambda: self._insert_static(speaker, message))
+
+    def _insert_static(self, speaker: str, message: str) -> None:
+        try:
+            label_tag = "user_label" if speaker == "You" else "agent_label"
+            tag = "user" if speaker == "You" else "agent"
+            if self.admin_mode and speaker == "Agent Kal":
+                speaker = "Agent Kal (Admin Mode)"
+            self.chat.insert("end", f"{speaker}: ", label_tag)
+            self._insert_message_text(message + "\n\n", tag)
+            self.chat.see("end")
+            self._focus_prompt()
+        except tk.TclError:
+            pass
+
     def _note(self, message: str) -> None:
         self.root.after(0, lambda: self._enqueue_note(message))
 
@@ -1398,11 +1415,13 @@ class FloatingPrompt:
             # Route tool output to the matching sub-agent window
             action_key = name.removeprefix("tool.")
             if isinstance(data, dict):
-                stdout = data.get("stdout", "")
-                stderr = data.get("stderr", "")
+                import re as _re
+                _ansi = _re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+                stdout = _ansi.sub("", data.get("stdout", "") or "")
+                stderr = _ansi.sub("", data.get("stderr", "") or "")
                 found = data.get("found", True)
                 if not found:
-                    self._subagent_write(action_key, f"⚠ Tool not installed on this system.\n", "error")
+                    self._subagent_write(action_key, "⚠ Tool not installed on this system.\n", "error")
                 elif stdout:
                     self._subagent_write(action_key, stdout[:3000] + ("\n…(truncated)\n" if len(stdout) > 3000 else "\n"), "output")
                 elif stderr:

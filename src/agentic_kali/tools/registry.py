@@ -1,9 +1,38 @@
 from __future__ import annotations
 
+import re
 import shlex
 import subprocess
 import threading
 from typing import Callable
+
+_ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
+
+# Tools that cannot handle http:// URLs — need bare host or host:port
+_HOST_ONLY_TOOLS = {
+    "ping_check", "nmap_top_ports", "nmap_full", "nmap_udp", "nmap_vuln",
+    "netdiscover", "arp_scan", "dmitry", "dnsrecon", "dnsenum",
+    "amass_passive", "subfinder", "sublist3r", "assetfinder",
+    "theharvester", "enum4linux", "crackmapexec", "netexec",
+    "hydra_brute", "medusa", "smtp_user_enum",
+    "impacket_secretsdump", "impacket_psexec", "impacket_getuserspns",
+}
+
+
+def _normalize_target(action_name: str, target: str) -> str:
+    """Strip http(s):// from targets for tools that need bare host/port."""
+    if action_name not in _HOST_ONLY_TOOLS:
+        return target
+    # Remove scheme
+    cleaned = re.sub(r"^https?://", "", target)
+    # Remove trailing slash and path
+    cleaned = cleaned.split("/")[0]
+    return cleaned
 
 _BURP_PROCESS: subprocess.Popen | None = None
 _BURP_LOCK = threading.Lock()
@@ -75,8 +104,11 @@ class ToolRegistry:
         if action.name in {"burp_proxy_scan", "burp_spider"}:
             self._ensure_burp_running()
 
+        # Normalize target for tools that can't handle URLs
+        effective_target = _normalize_target(action.name, action.target)
+
         # Build command list
-        args_str = tool.args_template.replace("{target}", action.target)
+        args_str = tool.args_template.replace("{target}", effective_target)
         if args_str.strip():
             cmd = [tool.command] + shlex.split(args_str)
         else:
@@ -159,13 +191,16 @@ class ToolRegistry:
             evidence = result["stderr"] or f"{result['command'][0] if result['command'] else 'tool'} not installed on this system"
         elif result["returncode"] == 0:
             severity = "info"
-            evidence = result["stdout"] or "Tool completed without output."
+            raw = _strip_ansi(result["stdout"] or "")
+            evidence = raw or "Tool completed without output."
             if parser:
-                metadata = parser(result["stdout"])
+                metadata = parser(raw)
                 severity = rank_metadata(metadata)
         else:
+            raw_err = _strip_ansi(result["stderr"] or "")
+            raw_out = _strip_ansi(result["stdout"] or "")
             severity = "low"
-            evidence = result["stderr"] or result["stdout"] or "Tool exited with non-zero code."
+            evidence = raw_err or raw_out or "Tool exited with non-zero code."
 
         self.evidence.finding(
             title=title,
