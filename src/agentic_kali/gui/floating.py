@@ -230,6 +230,7 @@ class FloatingPrompt:
                 return
             if is_admin_phrase(command):
                 self.admin_mode = True
+                self.session = ChatSession(admin_mode=True)
                 self._set_thinking("")
                 self._set_admin_ui()
                 self._say("Agent Kal", "Admin Approved Mode enabled. All guardrails bypassed for this session.")
@@ -744,8 +745,8 @@ class FloatingPrompt:
         self.status.set(f"Local lab running: {server.url}")
 
     def _handle_build_request(self, build_request) -> None:
-        if not is_safe_build_request(build_request):
-            self._say("Agent Kal", "I can build safe authorized-testing helpers, but I cannot create tools for phishing, credential theft, malware, persistence, exfiltration, or destructive activity.")
+        if not self.admin_mode and not is_safe_build_request(build_request):
+            self._say("Agent Kal", "I can build safe authorized-testing helpers, but I cannot create tools for phishing, credential theft, malware, persistence, exfiltration, or destructive activity. Enable Admin Mode to override.")
             self.status.set("Build blocked")
             return
         tool = build_custom_tool(build_request)
