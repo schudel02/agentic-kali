@@ -79,3 +79,21 @@ def test_summary_explains_findings_in_laymens_terms():
     assert "Why it matters" in text
     assert "What to do next" in text
     assert "open port as a door" in text
+
+
+def test_beginner_intro_guides_user():
+    prompt = object.__new__(FloatingPrompt)
+    prompt.user_mode = "Beginner"
+    prompt.preferred_name = "Alex"
+    text = prompt._mode_intro()
+    assert "Hi Alex" in text
+    assert "Whitehat Ethical Penetration Testing Agent" in text
+    assert "simulated testing environment" in text
+
+
+def test_target_explanation_has_examples():
+    prompt = object.__new__(FloatingPrompt)
+    text = prompt._target_explanation()
+    assert "IP address" in text
+    assert "Host/domain" in text
+    assert "authorization" in text

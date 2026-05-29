@@ -71,13 +71,13 @@ class FloatingPrompt:
         self.chat_menu.add_command(label="Select All", command=self._select_all_chat)
         self.chat_menu.add_command(label="Save Transcript", command=self.save_chat_transcript)
         self.admin_mode = False
+        self.user_mode = "Regular"
+        self.preferred_name = ""
+        self.awaiting_name = False
+        self.awaiting_beginner_choice = False
+        self.awaiting_beginner_target = False
         self.speaking = False
         self.say_queue: list[tuple[str, str, str, str, bool]] = []
-        self._say(
-            "Agent Kal",
-            "Hello James, I'm Agent Kal. Tell me what authorized system you want to test, and I'll choose the Kali tools, run safe checks, and explain what I find.",
-            animated=True,
-        )
 
         input_frame = tk.Frame(self.root)
         input_frame.pack(fill="x", padx=10, pady=(0, 6))
@@ -129,7 +129,7 @@ class FloatingPrompt:
         self.lab_servers: list[LabServer] = []
         self.countdown_after: str | None = None
         self.countdown_remaining = 0
-        self.root.after(300, self._focus_prompt)
+        self.root.after(300, self._show_mode_dialog)
 
     def _build_menus(self) -> None:
         menubar = tk.Menu(self.root)
@@ -169,11 +169,36 @@ class FloatingPrompt:
         self.status.set("Stopping...")
         self._set_thinking("")
 
+    def _show_mode_dialog(self) -> None:
+        window = tk.Toplevel(self.root)
+        window.title("Choose Agent Kal Mode")
+        window.attributes("-topmost", True)
+        window.geometry("420x260+120+120")
+        window.grab_set()
+        tk.Label(window, text="Choose Mode", font=("TkDefaultFont", 14, "bold")).pack(fill="x", padx=16, pady=(16, 8))
+        tk.Label(window, text="Select how much guidance Agent Kal should provide.", wraplength=380).pack(fill="x", padx=16, pady=(0, 12))
+        for mode, desc in (
+            ("Beginner", "Step-by-step explanations and guided testing."),
+            ("Regular", "Balanced help and direct testing flow."),
+            ("Professional", "Minimal explanations and faster execution."),
+        ):
+            tk.Button(window, text=f"{mode} - {desc}", command=lambda value=mode: self._select_mode(window, value)).pack(fill="x", padx=16, pady=4)
+
+    def _select_mode(self, window: tk.Toplevel, mode: str) -> None:
+        self.user_mode = mode
+        self.awaiting_name = True
+        self.title_text.set(f"{mode} Mode - Agent Kal V.1" if mode == "Beginner" else "Agent Kal V.1")
+        self.mode.set(f"{mode} Mode")
+        window.destroy()
+        self._say("Agent Kal", "What would you prefer I call you?", animated=True)
+        self._focus_prompt()
+
     def _set_admin_ui(self) -> None:
         self.root.after(0, self._enable_admin_ui)
 
     def _enable_admin_ui(self) -> None:
-        self.title_text.set("[Admin Mode] - Agent Kal V.1")
+        prefix = f"{self.user_mode} Mode - " if self.user_mode == "Beginner" else ""
+        self.title_text.set(f"[Admin Mode] - {prefix}Agent Kal V.1")
         self.root.title("Agentic Kali - Admin Mode")
         try:
             self.security_button.pack(side="right", padx=(8, 0))
@@ -186,6 +211,9 @@ class FloatingPrompt:
             scope = Scope.model_validate(json.loads(DEFAULT_SCOPE.read_text(encoding="utf-8")))
             self.events = []
             command = self._last_user_message()
+            if self._handle_onboarding(command, scope):
+                self._set_thinking("")
+                return
             consent_scope = self._scope_from_consent(command, scope)
             if consent_scope:
                 scope = consent_scope
@@ -304,6 +332,65 @@ class FloatingPrompt:
         if command.lower().strip() in {"yes", "y", "do it", "just open", "just open it", "open it"}:
             return self.pending_launch
         return None
+
+    def _handle_onboarding(self, command: str, scope: Scope) -> bool:
+        if self.awaiting_name:
+            self.preferred_name = command.strip()
+            self.awaiting_name = False
+            if self.user_mode == "Beginner":
+                self.awaiting_beginner_choice = True
+            self._say("Agent Kal", self._mode_intro(), animated=True)
+            return True
+        if self.user_mode != "Beginner":
+            return False
+        lower = command.lower().strip()
+        if self.awaiting_beginner_choice:
+            self.awaiting_beginner_choice = False
+            if "sim" in lower or "lab" in lower:
+                self._say("Agent Kal", "Good choice. Say `create a local test server` and I will start a safe local practice target, then walk you through recon and reporting.", animated=True)
+                return True
+            self.awaiting_beginner_target = True
+            self._say("Agent Kal", self._target_explanation(), animated=True)
+            return True
+        if self.awaiting_beginner_target:
+            target = extract_target(command)
+            if not target:
+                self._say("Agent Kal", self._target_explanation(), animated=True)
+                return True
+            self.last_target = target
+            self.awaiting_beginner_target = False
+            self._say("Agent Kal", f"Target saved: {target}. I need authorization before testing it.", animated=True)
+            self._ensure_consent(scope, target)
+            return True
+        return False
+
+    def _mode_intro(self) -> str:
+        name = self.preferred_name or "there"
+        if self.user_mode == "Beginner":
+            return (
+                f"Hi {name}, my name is Agent Kal. I'm a Whitehat Ethical Penetration Testing Agent.\n\n"
+                "I can assist you in running authorized penetration tests. Some things I can do:\n"
+                "- Explain targets, scope, and authorization.\n"
+                "- Run recon like port checks, web fingerprinting, and HTTP probing.\n"
+                "- Run safe vulnerability checks and conservative SQL injection checks when authorized.\n"
+                "- Open Kali tools, explain what they do, and write reports.\n"
+                "- Create a local practice server for simulated testing.\n\n"
+                "Would you like to run a simulated testing environment first, or dive right in to actual testing?"
+            )
+        if self.user_mode == "Professional":
+            return f"Hi {name}. Professional Mode ready. Give me a target and test objective."
+        return f"Hi {name}. Regular Mode ready. Tell me the authorized target and what you want to test."
+
+    def _target_explanation(self) -> str:
+        return (
+            "Okay. What target are you going to test?\n\n"
+            "A target is the system you have permission to assess. Examples:\n"
+            "- IP address: 192.168.1.25\n"
+            "- Localhost: 127.0.0.1\n"
+            "- Host/domain: example.com\n"
+            "- URL: https://example.com/login\n\n"
+            "Send the target, then I will ask for authorization before any tests run."
+        )
 
     def _is_intrusive_request(self, command: str) -> bool:
         text = command.lower()
