@@ -225,9 +225,6 @@ class FloatingPrompt:
             )
             self.events = []
             command = self._last_user_message()
-            if self._handle_onboarding(command, scope):
-                self._set_thinking("")
-                return
             if is_admin_phrase(command):
                 self.admin_mode = True
                 self.session = ChatSession(admin_mode=True)
@@ -235,6 +232,9 @@ class FloatingPrompt:
                 self._set_admin_ui()
                 self._say("Agent Kal", "Admin Approved Mode enabled. All guardrails bypassed for this session.")
                 self.status.set("Admin Approved Mode")
+                return
+            if self._handle_onboarding(command, scope):
+                self._set_thinking("")
                 return
             consent_scope = self._scope_from_consent(command, scope)
             if consent_scope:
