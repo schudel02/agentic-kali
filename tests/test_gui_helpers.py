@@ -113,3 +113,11 @@ def test_beginner_scope_prompts_are_stepwise():
     assert "testing goal" in prompt._scope_goal_prompt()
     assert "restrictions" in prompt._scope_restrictions_prompt()
     assert "Scope is ready" in prompt._scope_ready_message()
+
+
+def test_beginner_authorization_is_separate_step():
+    prompt = object.__new__(FloatingPrompt)
+    prompt.beginner_scope = {"target": "example.com"}
+    text = prompt._authorization_explanation("example.com")
+    assert "Authorization means" in text
+    assert "type `authorized`" in text

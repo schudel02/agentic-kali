@@ -77,6 +77,7 @@ class FloatingPrompt:
         self.awaiting_name = False
         self.awaiting_beginner_choice = False
         self.awaiting_beginner_target = False
+        self.awaiting_beginner_auth = False
         self.beginner_scope_step = ""
         self.beginner_scope: dict[str, str] = {}
         self.speaking = False
@@ -115,9 +116,9 @@ class FloatingPrompt:
         self.thinking_label.pack(fill="x", padx=10)
 
         frame = tk.Frame(self.root)
-        frame.pack(fill="x", padx=10, pady=8)
-        tk.Button(frame, text="Stop", command=self.stop).pack(side="left")
-        tk.Button(frame, text="Quit", command=self.root.destroy).pack(side="right")
+        frame.pack(fill="x", padx=10, pady=(4, 6))
+        tk.Button(frame, text="Stop", width=8, command=self.stop).pack(side="left")
+        tk.Button(frame, text="Quit", width=8, command=self.root.destroy).pack(side="right")
 
         self.preview: tk.Toplevel | None = None
         self.preview_embedded: tk.Frame | None = None
@@ -364,10 +365,22 @@ class FloatingPrompt:
             self.last_target = target
             self.awaiting_beginner_target = False
             self.beginner_scope = {"target": target}
+            self.awaiting_beginner_auth = True
             self._say("Agent Kal", self._authorization_explanation(target), animated=True)
-            if self._ensure_consent(scope, target):
-                self.beginner_scope_step = "goal"
-                self._say("Agent Kal", self._scope_goal_prompt(), animated=True)
+            self._say("Agent Kal", "Type `authorized` in chat when you are ready to continue.", animated=True)
+            return True
+        if self.awaiting_beginner_auth:
+            if lower not in {"authorize", "authorized"}:
+                self._say("Agent Kal", "Authorization is required before I ask the next scope question. Type `authorized` if you have permission, or choose another target.", animated=True)
+                return True
+            self.awaiting_beginner_auth = False
+            target = self.beginner_scope.get("target") or self.last_target
+            if target:
+                updated = self._save_beginner_authorization(scope, target)
+                self._say("Agent Kal", f"Authorization saved for {target}.", animated=True)
+                scope = updated
+            self.beginner_scope_step = "goal"
+            self._say("Agent Kal", self._scope_goal_prompt(), animated=True)
             return True
         if self.beginner_scope_step == "goal":
             self.beginner_scope["goal"] = command.strip()
@@ -377,6 +390,7 @@ class FloatingPrompt:
         if self.beginner_scope_step == "restrictions":
             self.beginner_scope["restrictions"] = command.strip()
             self.beginner_scope_step = ""
+            self._save_beginner_scope_details(scope)
             self._say("Agent Kal", self._scope_ready_message(), animated=True)
             return True
         return False
@@ -451,6 +465,33 @@ class FloatingPrompt:
             f"- Restrictions: {restrictions}\n\n"
             "You can now say `run quick recon`, `run vulnerability test`, or `explain what test I should run first`."
         )
+
+    def _save_beginner_authorization(self, scope: Scope, target: str) -> Scope:
+        updated = scope.model_copy(
+            update={
+                "targets": list(dict.fromkeys([*scope.targets, target])),
+                "allowed_actions": list(dict.fromkeys([*scope.allowed_actions, *ALL_ACTIONS])),
+                "approval_mode": ApprovalMode.RECON_ONLY,
+                "intrusive_allowed": True,
+                "signed_permission": True,
+                "public_targets_allowed": True,
+            }
+        )
+        self._write_scope(updated)
+        return updated
+
+    def _save_beginner_scope_details(self, scope: Scope) -> Scope:
+        target = self.beginner_scope.get("target")
+        existing = self._load_scope_or_none() or scope
+        updated = existing.model_copy(
+            update={
+                "targets": list(dict.fromkeys([*existing.targets, target] if target else existing.targets)),
+                "testing_goal": self.beginner_scope.get("goal", ""),
+                "restrictions": self.beginner_scope.get("restrictions", ""),
+            }
+        )
+        self._write_scope(updated)
+        return updated
 
     def _is_intrusive_request(self, command: str) -> bool:
         text = command.lower()
@@ -1295,6 +1336,8 @@ class FloatingPrompt:
             "Approval": tk.Entry(window),
             "Permission": tk.Entry(window),
             "Public Targets": tk.Entry(window),
+            "Testing Goal": tk.Entry(window),
+            "Restrictions": tk.Entry(window),
         }
         defaults = {
             "Engagement": "local-lab",
@@ -1303,6 +1346,8 @@ class FloatingPrompt:
             "Approval": "recon_only",
             "Permission": "AUTHORIZED",
             "Public Targets": "false",
+            "Testing Goal": "",
+            "Restrictions": "",
         }
 
         existing = self._load_scope_or_none()
@@ -1315,6 +1360,8 @@ class FloatingPrompt:
                     "Approval": existing.approval_mode,
                     "Permission": "AUTHORIZED" if existing.signed_permission else "",
                     "Public Targets": str(existing.public_targets_allowed).lower(),
+                    "Testing Goal": existing.testing_goal,
+                    "Restrictions": existing.restrictions,
                 }
             )
 
@@ -1406,6 +1453,8 @@ class FloatingPrompt:
             intrusive_allowed=False,
             signed_permission=fields["Permission"].get() == "AUTHORIZED",
             public_targets_allowed=fields["Public Targets"].get().lower() == "true",
+            testing_goal=fields["Testing Goal"].get(),
+            restrictions=fields["Restrictions"].get(),
         )
         self._write_scope(scope)
         messagebox.showinfo("Agentic Kali", f"Saved {DEFAULT_SCOPE}")
@@ -1425,6 +1474,8 @@ class FloatingPrompt:
                 "allowed_actions": [item.strip() for item in actions.get().split(",") if item.strip()],
                 "intrusive_allowed": intrusive.get(),
                 "public_targets_allowed": public_targets.get(),
+                "testing_goal": existing.testing_goal,
+                "restrictions": existing.restrictions,
             }
         )
         self._write_scope(updated)

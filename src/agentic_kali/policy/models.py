@@ -19,6 +19,8 @@ class Scope(BaseModel):
     intrusive_allowed: bool = False
     signed_permission: bool = False
     public_targets_allowed: bool = False
+    testing_goal: str = ""
+    restrictions: str = ""
 
 
 class Action(BaseModel):

@@ -27,6 +27,10 @@ def to_markdown(report: dict) -> str:
         "",
         *[f"- {target}" for target in report["targets"]],
         "",
+        "## Scope",
+        "",
+        *scope_lines(report),
+        "",
         "## Findings",
         "",
     ]
@@ -52,3 +56,16 @@ def to_markdown(report: dict) -> str:
                 lines.extend(["Metadata:", "", "```json", json.dumps(finding["metadata"], indent=2), "```", ""])
 
     return "\n".join(lines)
+
+
+def scope_lines(report: dict) -> list[str]:
+    scope = report.get("scope", {})
+    if not scope:
+        return ["No scope metadata saved."]
+    return [
+        f"- Testing goal: {scope.get('testing_goal') or 'Not specified'}",
+        f"- Restrictions: {scope.get('restrictions') or 'Not specified'}",
+        f"- Allowed actions: {', '.join(scope.get('allowed_actions', [])) or 'Not specified'}",
+        f"- Intrusive allowed: {scope.get('intrusive_allowed', False)}",
+        f"- Public targets allowed: {scope.get('public_targets_allowed', False)}",
+    ]
