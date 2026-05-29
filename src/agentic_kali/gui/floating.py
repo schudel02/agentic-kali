@@ -139,6 +139,8 @@ class FloatingPrompt:
     def _build_menus(self) -> None:
         menubar = tk.Menu(self.root)
         file_menu = tk.Menu(menubar, tearoff=0)
+        file_menu.add_command(label="New Chat Session", command=self._new_chat_session)
+        file_menu.add_separator()
         file_menu.add_command(label="Save Chat Transcript", command=self.save_chat_transcript)
         file_menu.add_command(label="Open Reports Folder", command=self.open_reports)
         file_menu.add_separator()
@@ -216,27 +218,31 @@ class FloatingPrompt:
     def _run_agent(self) -> None:
         try:
             self._set_thinking("Thinking through your request...")
-            scope = Scope.model_validate(json.loads(DEFAULT_SCOPE.read_text(encoding="utf-8")))
+            scope = self._load_scope_or_none() or Scope(
+                engagement_name="local-lab",
+                targets=["127.0.0.1"],
+                allowed_actions=list(ALL_ACTIONS),
+            )
             self.events = []
             command = self._last_user_message()
             if self._handle_onboarding(command, scope):
                 self._set_thinking("")
                 return
-            consent_scope = self._scope_from_consent(command, scope)
-            if consent_scope:
-                scope = consent_scope
-                self._say("Agent Kal", f"Consent saved for {', '.join(scope.targets)}. Admin Mode can now run scoped safe actions without extra approval prompts.")
-                if not wants_tool_run(command):
-                    self._set_thinking("")
-                    self.status.set("Scope saved")
-                    return
             if is_admin_phrase(command):
                 self.admin_mode = True
                 self._set_thinking("")
                 self._set_admin_ui()
-                self._say("Agent Kal", "Admin Approved Mode enabled for this session. I will still stay inside scope and log every action.")
+                self._say("Agent Kal", "Admin Approved Mode enabled. All guardrails bypassed for this session.")
                 self.status.set("Admin Approved Mode")
                 return
+            consent_scope = self._scope_from_consent(command, scope)
+            if consent_scope:
+                scope = consent_scope
+                self._say("Agent Kal", f"Consent saved for {', '.join(scope.targets)}.")
+                if not wants_tool_run(command):
+                    self._set_thinking("")
+                    self.status.set("Scope saved")
+                    return
             lab_request = parse_lab_request(command)
             if lab_request:
                 self._set_thinking("")
@@ -1472,6 +1478,24 @@ class FloatingPrompt:
             return
         subprocess.Popen([opener, str(REPORTS_DIR.resolve())])
         self._gui_event("gui.reports.opened", {"path": str(REPORTS_DIR.resolve())})
+
+    def _new_chat_session(self) -> None:
+        self.stop()
+        self.chat.delete("1.0", "end")
+        self.events = []
+        self.say_queue.clear()
+        self.speaking = False
+        self.session = ChatSession()
+        self.admin_mode = False
+        self.stop_requested = False
+        self.last_target = None
+        self._last_suggested_target = None
+        self.status.set("")
+        self._set_thinking("")
+        self.root.title("Agentic Kali")
+        self.title_text.set("Agent Kal V.1")
+        self.mode.set("Chat Prompt")
+        self._say("Agent Kal", "New session started. What would you like to test?")
 
     def save_chat_transcript(self) -> None:
         REPORTS_DIR.mkdir(parents=True, exist_ok=True)
