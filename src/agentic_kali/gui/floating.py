@@ -27,6 +27,7 @@ from agentic_kali.policy.admin import is_admin_phrase
 from agentic_kali.reporting.history import append_history
 from agentic_kali.setup import run_config_wizard
 from agentic_kali.reporting.writer import write_reports
+from agentic_kali.tools.runner import stop_all_commands
 
 
 DEFAULT_SCOPE = Path("/etc/agentic-kali/scope.json")
@@ -76,6 +77,8 @@ class FloatingPrompt:
         self.awaiting_name = False
         self.awaiting_beginner_choice = False
         self.awaiting_beginner_target = False
+        self.beginner_scope_step = ""
+        self.beginner_scope: dict[str, str] = {}
         self.speaking = False
         self.say_queue: list[tuple[str, str, str, str, bool]] = []
 
@@ -166,6 +169,7 @@ class FloatingPrompt:
 
     def stop(self) -> None:
         self.stop_requested = True
+        stop_all_commands()
         self.status.set("Stopping...")
         self._set_thinking("")
 
@@ -359,8 +363,21 @@ class FloatingPrompt:
                 return True
             self.last_target = target
             self.awaiting_beginner_target = False
-            self._say("Agent Kal", f"Target saved: {target}. I need authorization before testing it.", animated=True)
-            self._ensure_consent(scope, target)
+            self.beginner_scope = {"target": target}
+            self._say("Agent Kal", self._authorization_explanation(target), animated=True)
+            if self._ensure_consent(scope, target):
+                self.beginner_scope_step = "goal"
+                self._say("Agent Kal", self._scope_goal_prompt(), animated=True)
+            return True
+        if self.beginner_scope_step == "goal":
+            self.beginner_scope["goal"] = command.strip()
+            self.beginner_scope_step = "restrictions"
+            self._say("Agent Kal", self._scope_restrictions_prompt(), animated=True)
+            return True
+        if self.beginner_scope_step == "restrictions":
+            self.beginner_scope["restrictions"] = command.strip()
+            self.beginner_scope_step = ""
+            self._say("Agent Kal", self._scope_ready_message(), animated=True)
             return True
         return False
 
@@ -390,6 +407,49 @@ class FloatingPrompt:
             "- Host/domain: example.com\n"
             "- URL: https://example.com/login\n\n"
             "Send the target, then I will ask for authorization before any tests run."
+        )
+
+    def _authorization_explanation(self, target: str) -> str:
+        return (
+            f"Target saved: {target}.\n\n"
+            "Authorization means you confirm you have full permission to test this target. "
+            "This should come from ownership, a written agreement, or an approved lab environment.\n\n"
+            "To authorize and confirm you have full permission to proceed, type `authorized` in the authorization box. "
+            "If you do not have permission, exit that menu and choose another target."
+        )
+
+    def _scope_goal_prompt(self) -> str:
+        return (
+            "Next scope step: testing goal.\n\n"
+            "The goal tells me what kind of security question we are answering. Examples:\n"
+            "- Find exposed services\n"
+            "- Check a website for common issues\n"
+            "- Map web technologies\n"
+            "- Run a conservative SQL injection check\n\n"
+            "What is your testing goal?"
+        )
+
+    def _scope_restrictions_prompt(self) -> str:
+        return (
+            "Next scope step: restrictions.\n\n"
+            "Restrictions are rules I should follow during testing. Examples:\n"
+            "- No login testing\n"
+            "- Do not test subdomains\n"
+            "- Only run non-invasive scans\n"
+            "- Stop if the site slows down\n\n"
+            "What restrictions should I follow? If none, type `none`."
+        )
+
+    def _scope_ready_message(self) -> str:
+        target = self.beginner_scope.get("target", "the target")
+        goal = self.beginner_scope.get("goal", "authorized testing")
+        restrictions = self.beginner_scope.get("restrictions", "none")
+        return (
+            "Scope is ready.\n\n"
+            f"- Target: {target}\n"
+            f"- Goal: {goal}\n"
+            f"- Restrictions: {restrictions}\n\n"
+            "You can now say `run quick recon`, `run vulnerability test`, or `explain what test I should run first`."
         )
 
     def _is_intrusive_request(self, command: str) -> bool:
@@ -783,13 +843,13 @@ class FloatingPrompt:
                 justify="left",
             ).pack(fill="x", padx=16, pady=(0, 12))
 
-            tk.Label(window, text="You must have full written authorization to proceed with this test. Type AUTHORIZE:", anchor="w", wraplength=520).pack(fill="x", padx=16)
+            tk.Label(window, text="You must have full written authorization to proceed with this test. Type authorized:", anchor="w", wraplength=520).pack(fill="x", padx=16)
             token = tk.Entry(window)
             token.pack(fill="x", padx=16, pady=(4, 12))
             token.focus_set()
 
             def approve() -> None:
-                if token.get().strip() != "AUTHORIZE":
+                if token.get().strip().lower() not in {"authorize", "authorized"}:
                     messagebox.showerror("Authorization Required", "must provide auth to proceed", parent=window)
                     token.selection_range(0, "end")
                     token.focus_set()

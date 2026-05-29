@@ -97,3 +97,19 @@ def test_target_explanation_has_examples():
     assert "IP address" in text
     assert "Host/domain" in text
     assert "authorization" in text
+
+
+def test_authorization_explanation_defines_permission():
+    prompt = object.__new__(FloatingPrompt)
+    text = prompt._authorization_explanation("example.com")
+    assert "Authorization means" in text
+    assert "type `authorized`" in text
+    assert "choose another target" in text
+
+
+def test_beginner_scope_prompts_are_stepwise():
+    prompt = object.__new__(FloatingPrompt)
+    prompt.beginner_scope = {"target": "example.com", "goal": "quick recon", "restrictions": "none"}
+    assert "testing goal" in prompt._scope_goal_prompt()
+    assert "restrictions" in prompt._scope_restrictions_prompt()
+    assert "Scope is ready" in prompt._scope_ready_message()
