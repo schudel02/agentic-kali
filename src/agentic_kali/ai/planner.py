@@ -16,13 +16,20 @@ class AIPlanner:
 
     def propose_next_actions(self) -> list[Action]:
         ai_names = AIProvider().suggest_actions(self._prompt())
+        # Only skip actions run in THIS session, not prior runs (prior runs inform the AI prompt)
+        session_done = [
+            e["data"].get("action")
+            for e in self.evidence.events
+            if e["event"] == "action.started"
+        ]
         selected = ai_names or actions_from_command(
-            self.command, self.scope.allowed_actions, self._prior_completed()
+            self.command, self.scope.allowed_actions, session_done
         )
+        all_known = set(ALL_ADMIN_ACTIONS)
         allowed_names = [
             name
             for name in selected
-            if name in ALL_ACTIONS and name in self.scope.allowed_actions
+            if name in self.scope.allowed_actions and name in all_known
         ]
 
         proposed: list[Action] = []

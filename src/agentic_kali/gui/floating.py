@@ -591,15 +591,20 @@ class FloatingPrompt:
 
     def _summarize_results(self, report: dict, files: dict[str, str], stopped: bool = False) -> str:
         findings = report.get("findings", [])
+        events = report.get("events", [])
         if not findings:
+            ran = [e["data"].get("action") for e in events if e.get("event") == "action.started"]
             intro = "Stopped. " if stopped else "Finished. "
+            if not ran:
+                return (
+                    f"{intro}No tools were run. The target may not be in scope or no actions were selected.\n"
+                    "Try: 'run quick recon on [target]' or enable Admin Mode and try again.\n\n"
+                    f"Report: {files['markdown']}"
+                )
             return (
-                f"{intro}I did not find reportable issues in the completed checks.\n"
-                "Next steps:\n"
-                "- Confirm the target and scope are correct.\n"
-                "- Try Web Fingerprint or Safe Vulnerability Check if you only ran quick recon.\n"
-                "- Review the report for raw tool output.\n\n"
-                f"Report saved here: {files['markdown']}"
+                f"{intro}Tools ran ({', '.join(ran)}) but returned no structured findings. "
+                "This can mean the target had no detectable issues, the tool isn't installed, or the target blocked scanning.\n"
+                f"Check the raw report for tool output: {files['markdown']}"
             )
 
         counts: dict[str, int] = {}

@@ -35,9 +35,15 @@ def summarize_request(command: str, actions: list[str], target: str | None) -> s
     return f"I'll test {target_text} with {action_text}, then summarize findings and recommendations."
 
 
+_QUESTION_PREFIXES = ("what", "how", "why", "which", "can you", "could you", "do you", "is there", "are there", "tell me", "show me", "explain", "list", "describe")
+
+
 def wants_tool_run(command: str) -> bool:
-    text = command.lower()
-    run_words = ("run", "scan", "test", "pentest", "check", "enumerate", "probe", "fingerprint")
+    text = command.lower().strip()
+    # Questions should not trigger tool runs
+    if any(text.startswith(p) for p in _QUESTION_PREFIXES):
+        return False
+    run_words = ("run", "scan", "test", "pentest", "enumerate", "probe", "fingerprint")
     target = extract_target(command)
     return target is not None and any(word in text for word in run_words)
 
