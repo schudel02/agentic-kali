@@ -198,11 +198,19 @@ class FloatingPrompt:
 
     def _select_mode(self, window: tk.Toplevel, mode: str) -> None:
         self.user_mode = mode
-        self.awaiting_name = True
-        self.title_text.set(f"{mode} Mode - Agent Kal V.1" if mode == "Beginner" else "Agent Kal V.1")
         self.mode.set(f"{mode} Mode")
         window.destroy()
-        self._say("Agent Kal", "What would you prefer I call you?", animated=True)
+        if mode == "Professional":
+            self.preferred_name = "Chuck Norris"
+            self.awaiting_name = False
+            self.title_text.set("Agent Kal V.1")
+            self._say("Agent Kal", "Oh yeah? Professional Mode?\nYou don't have to tell me your name. I already know it.", animated=True)
+            self.root.after(2800, lambda: self.title_text.set("Agent Kal V.1 — Chuck Norris"))
+            self.root.after(2800, lambda: self._say("Agent Kal", self._mode_intro(), animated=True))
+        else:
+            self.awaiting_name = True
+            self.title_text.set(f"{mode} Mode - Agent Kal V.1" if mode == "Beginner" else "Agent Kal V.1")
+            self._say("Agent Kal", "What would you prefer I call you?", animated=True)
         self._focus_prompt()
 
     def _set_admin_ui(self) -> None:
