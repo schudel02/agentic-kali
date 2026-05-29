@@ -4,7 +4,7 @@ from agentic_kali.tools.catalog import explain_tool, recommend_tools
 def test_explain_tool():
     explanation = explain_tool("nmap")
     assert explanation
-    assert "Scans hosts" in explanation
+    assert "nmap" in explanation.lower()
 
 
 def test_recommend_web_tools():

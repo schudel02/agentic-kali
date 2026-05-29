@@ -5,11 +5,18 @@ from pathlib import Path
 
 ADMIN_GUARDRAILS = Path("/etc/agentic-kali/guardrails.json")
 
+from agentic_kali.tools.catalog import TOOLS as _TOOLS
+
 SAFE_RECON_ACTIONS = ("ping_check", "nmap_top_ports", "whatweb", "httpx_probe", "nuclei_safe")
-INTRUSIVE_ACTIONS = ("sqlmap_safe",)
+INTRUSIVE_ACTIONS = ("sqlmap_safe", "sqlmap_full", "hydra_brute", "medusa", "john_crack",
+                     "hashcat", "msfconsole", "msfvenom", "armitage", "evil_winrm",
+                     "beef_xss", "mimikatz", "setoolkit", "veil", "hoaxshell",
+                     "fluxion", "wifiphisher", "fern_wifi_cracker", "airgeddon",
+                     "ettercap", "bettercap", "responder", "mitm6", "yersinia",
+                     "goldeneye", "ligolo_ng", "chisel")
 ALL_ACTIONS = (*SAFE_RECON_ACTIONS, *INTRUSIVE_ACTIONS)
-ADMIN_EXTRA_ACTIONS = ("gobuster_dir", "ffuf_fuzz", "nikto_scan", "hydra_brute", "nuclei_full")
-ALL_ADMIN_ACTIONS = (*ALL_ACTIONS, *ADMIN_EXTRA_ACTIONS)
+# All catalog action names are available in admin mode
+ALL_ADMIN_ACTIONS = tuple(_TOOLS.keys())
 
 HIGH_RISK_TOOLS = {"setoolkit", "msfconsole", "hydra", "sqlmap"}
 PRIVILEGED_TOOLS = {"wireshark", "setoolkit"}

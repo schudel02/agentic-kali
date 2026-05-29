@@ -275,7 +275,11 @@ class FloatingPrompt:
             if self._awaiting_autonomous_goal:
                 self._awaiting_autonomous_goal = False
                 self._set_thinking("")
-                _goal_map = {"1": "recon", "2": "web audit", "3": "vulnerability scan", "4": "full pentest"}
+                _goal_map = {
+                    "1": "recon", "2": "web audit", "3": "vulnerability scan",
+                    "4": "full pentest", "5": "wifi", "6": "active directory",
+                    "7": "credentials", "8": "osint", "9": "forensics",
+                }
                 goal = _goal_map.get(command.strip().rstrip("."), command.lower().strip())
                 target = self.last_target
                 if not target:
@@ -336,11 +340,16 @@ class FloatingPrompt:
                 self._set_thinking("")
                 self._say(
                     "Agent Kal",
-                    "Autonomous mode. What kind of tests?\n\n"
-                    "  1. Recon — ping, port scan, web fingerprint, HTTP probe\n"
-                    "  2. Web Audit — fingerprint, nuclei, directory discovery, Nikto\n"
-                    "  3. Vulnerability Scan — nuclei full, Nikto, sqlmap\n"
-                    "  4. Full Pentest — everything available\n\n"
+                    "Autonomous mode activated. Choose a test type:\n\n"
+                    "  1. Recon              — ping, nmap, DNS, subdomain, OSINT\n"
+                    "  2. Web Audit          — fingerprint, nuclei, dirb, nikto, ffuf\n"
+                    "  3. Vulnerability Scan — nuclei full, nmap vuln scripts, nikto\n"
+                    "  4. Full Pentest       — all available tools\n"
+                    "  5. WiFi               — aircrack, wifite, kismet, reaver\n"
+                    "  6. Active Directory   — bloodhound, crackmapexec, impacket\n"
+                    "  7. Credentials        — hydra, john, hashcat, cewl\n"
+                    "  8. OSINT              — theHarvester, sherlock, spiderfoot\n"
+                    "  9. Forensics          — binwalk, yara, jadx, ghidra\n\n"
                     f"Target: {target or self.last_target or '(tell me the target first)'}\n"
                     "Reply with a number or name.",
                 )

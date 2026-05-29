@@ -1,26 +1,47 @@
 from __future__ import annotations
 
+import shlex
 from typing import Callable
 
 from agentic_kali.evidence.store import EvidenceStore
 from agentic_kali.policy.models import Action
 from agentic_kali.reporting.severity import rank_metadata
+from agentic_kali.tools.catalog import TOOLS
 from agentic_kali.tools.parsers import parse_httpx, parse_nmap, parse_whatweb
 from agentic_kali.tools.runner import run_command
 
-TOOL_DESCRIPTIONS = {
-    "ping_check": "Validating the target is inside the approved workflow.",
-    "nmap_top_ports": "Opening nmap and checking common exposed services.",
-    "whatweb": "Opening WhatWeb and fingerprinting web technology.",
-    "httpx_probe": "Opening httpx and probing HTTP titles, status codes, and technologies.",
-    "nuclei_safe": "Opening nuclei and running low-risk exposure checks.",
-    "nuclei_full": "Opening nuclei with medium/high severity templates (admin mode).",
-    "sqlmap_safe": "Opening sqlmap in conservative mode to check for SQL injection indicators.",
-    "gobuster_dir": "Opening gobuster for directory and file discovery.",
-    "ffuf_fuzz": "Opening ffuf for web path fuzzing.",
-    "nikto_scan": "Opening nikto for web server vulnerability scanning.",
-    "hydra_brute": "Opening hydra for authorized credential testing.",
+# Parsers for structured output extraction
+_PARSERS: dict[str, object] = {
+    "nmap_top_ports": parse_nmap,
+    "nmap_full": parse_nmap,
+    "nmap_udp": parse_nmap,
+    "nmap_vuln": parse_nmap,
+    "whatweb": parse_whatweb,
+    "httpx_probe": parse_httpx,
 }
+
+# Timeouts per action (seconds)
+_TIMEOUTS: dict[str, int] = {
+    "nmap_top_ports": 180,
+    "nmap_full": 600,
+    "nmap_udp": 300,
+    "nmap_vuln": 300,
+    "nuclei_safe": 300,
+    "nuclei_full": 480,
+    "gobuster_dir": 360,
+    "gobuster_dns": 360,
+    "ffuf_fuzz": 300,
+    "feroxbuster": 300,
+    "dirsearch": 300,
+    "nikto_scan": 420,
+    "wpscan": 300,
+    "hydra_brute": 300,
+    "medusa": 300,
+    "autorecon": 600,
+    "aircrack_ng": 120,
+    "wifite": 120,
+}
+_DEFAULT_TIMEOUT = 120
 
 
 class ToolRegistry:
@@ -29,148 +50,38 @@ class ToolRegistry:
         self.should_stop = should_stop or (lambda: False)
 
     def run(self, action: Action) -> None:
-        self.evidence.log("tool.description", {"action": action.name, "target": action.target, "description": TOOL_DESCRIPTIONS.get(action.name, "Running selected tool.")})
-        if action.name == "ping_check":
-            self._ping_check(action)
-            return
-        if action.name == "nmap_top_ports":
-            self._nmap_top_ports(action)
-            return
-        if action.name == "whatweb":
-            self._whatweb(action)
-            return
-        if action.name == "httpx_probe":
-            self._httpx_probe(action)
-            return
-        if action.name == "nuclei_safe":
-            self._nuclei_safe(action)
-            return
-        if action.name == "sqlmap_safe":
-            self._sqlmap_safe(action)
-            return
-        if action.name == "gobuster_dir":
-            self._gobuster_dir(action)
-            return
-        if action.name == "ffuf_fuzz":
-            self._ffuf_fuzz(action)
-            return
-        if action.name == "nikto_scan":
-            self._nikto_scan(action)
-            return
-        if action.name == "hydra_brute":
-            self._hydra_brute(action)
-            return
-        if action.name == "nuclei_full":
-            self._nuclei_full(action)
+        tool = TOOLS.get(action.name)
+        if not tool:
+            self.evidence.log("tool.skipped", {"action": action.name, "reason": "unknown tool"})
             return
 
-        self.evidence.log("tool.skipped", {"action": action.name, "reason": "unknown tool"})
+        self.evidence.log("tool.description", {
+            "action": action.name,
+            "target": action.target,
+            "description": tool.summary,
+        })
 
-    def _ping_check(self, action: Action) -> None:
-        self.evidence.finding(
-            title="Recon placeholder completed",
-            target=action.target,
-            severity="info",
-            evidence=f"Validated policy-controlled execution for {action.target}.",
-        )
+        # Build command list
+        args_str = tool.args_template.replace("{target}", action.target)
+        if args_str.strip():
+            cmd = [tool.command] + shlex.split(args_str)
+        else:
+            cmd = [tool.command]
 
-    def _nmap_top_ports(self, action: Action) -> None:
-        result = run_command(["nmap", "-Pn", "--top-ports", "100", "-sV", action.target], timeout=180, should_stop=self.should_stop)
-        self.evidence.log("tool.nmap_top_ports", result.as_dict())
-        self._record_result("Nmap top ports scan", action, result.as_dict(), parse_nmap)
+        timeout = _TIMEOUTS.get(action.name, _DEFAULT_TIMEOUT)
+        result = run_command(cmd, timeout=timeout, should_stop=self.should_stop)
 
-    def _whatweb(self, action: Action) -> None:
-        result = run_command(["whatweb", "--no-errors", action.target], timeout=120, should_stop=self.should_stop)
-        self.evidence.log("tool.whatweb", result.as_dict())
-        self._record_result("Web fingerprint", action, result.as_dict(), parse_whatweb)
+        event_key = f"tool.{action.name}"
+        self.evidence.log(event_key, result.as_dict())
 
-    def _httpx_probe(self, action: Action) -> None:
-        result = run_command(["httpx", "-silent", "-title", "-tech-detect", "-u", action.target], timeout=120, should_stop=self.should_stop)
-        self.evidence.log("tool.httpx_probe", result.as_dict())
-        self._record_result("HTTP probe", action, result.as_dict(), parse_httpx)
-
-    def _nuclei_safe(self, action: Action) -> None:
-        result = run_command(
-            [
-                "nuclei",
-                "-u",
-                action.target,
-                "-severity",
-                "info,low",
-                "-tags",
-                "tech,exposure,misconfig",
-                "-jsonl",
-            ],
-            timeout=240,
-            should_stop=self.should_stop,
-        )
-        self.evidence.log("tool.nuclei_safe", result.as_dict())
-        self._record_result("Nuclei safe templates", action, result.as_dict())
-
-    def _sqlmap_safe(self, action: Action) -> None:
-        result = run_command(
-            ["sqlmap", "-u", action.target, "--batch", "--risk=1", "--level=1", "--smart"],
-            timeout=240,
-            should_stop=self.should_stop,
-        )
-        self.evidence.log("tool.sqlmap_safe", result.as_dict())
-        self._record_result("SQL injection safe check", action, result.as_dict())
-
-    def _gobuster_dir(self, action: Action) -> None:
-        wordlist = "/usr/share/wordlists/dirb/common.txt"
-        result = run_command(
-            ["gobuster", "dir", "-u", action.target, "-w", wordlist, "-q"],
-            timeout=300,
-            should_stop=self.should_stop,
-        )
-        self.evidence.log("tool.gobuster_dir", result.as_dict())
-        self._record_result("Gobuster directory discovery", action, result.as_dict())
-
-    def _ffuf_fuzz(self, action: Action) -> None:
-        wordlist = "/usr/share/wordlists/dirb/common.txt"
-        url = action.target.rstrip("/") + "/FUZZ"
-        result = run_command(
-            ["ffuf", "-u", url, "-w", wordlist, "-mc", "200,204,301,302,403", "-s"],
-            timeout=300,
-            should_stop=self.should_stop,
-        )
-        self.evidence.log("tool.ffuf_fuzz", result.as_dict())
-        self._record_result("ffuf web fuzzing", action, result.as_dict())
-
-    def _nikto_scan(self, action: Action) -> None:
-        result = run_command(
-            ["nikto", "-h", action.target, "-nointeractive"],
-            timeout=360,
-            should_stop=self.should_stop,
-        )
-        self.evidence.log("tool.nikto_scan", result.as_dict())
-        self._record_result("Nikto web scan", action, result.as_dict())
-
-    def _hydra_brute(self, action: Action) -> None:
-        result = run_command(
-            ["hydra", "-L", "/usr/share/wordlists/metasploit/unix_users.txt",
-             "-P", "/usr/share/wordlists/metasploit/unix_passwords.txt",
-             "-t", "4", f"ssh://{action.target}"],
-            timeout=300,
-            should_stop=self.should_stop,
-        )
-        self.evidence.log("tool.hydra_brute", result.as_dict())
-        self._record_result("Hydra credential test", action, result.as_dict())
-
-    def _nuclei_full(self, action: Action) -> None:
-        result = run_command(
-            ["nuclei", "-u", action.target, "-severity", "info,low,medium,high", "-jsonl"],
-            timeout=360,
-            should_stop=self.should_stop,
-        )
-        self.evidence.log("tool.nuclei_full", result.as_dict())
-        self._record_result("Nuclei full scan", action, result.as_dict())
+        parser = _PARSERS.get(action.name)
+        self._record_result(tool.summary, action, result.as_dict(), parser)
 
     def _record_result(self, title: str, action: Action, result: dict, parser=None) -> None:
-        metadata = {}
+        metadata: dict = {}
         if not result["found"]:
             severity = "info"
-            evidence = result["stderr"]
+            evidence = result["stderr"] or f"{result['command'][0] if result['command'] else 'tool'} not installed on this system"
         elif result["returncode"] == 0:
             severity = "info"
             evidence = result["stdout"] or "Tool completed without output."
@@ -179,7 +90,7 @@ class ToolRegistry:
                 severity = rank_metadata(metadata)
         else:
             severity = "low"
-            evidence = result["stderr"] or result["stdout"]
+            evidence = result["stderr"] or result["stdout"] or "Tool exited with non-zero code."
 
         self.evidence.finding(
             title=title,

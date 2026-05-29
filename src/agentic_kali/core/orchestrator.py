@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any, Callable
 
 from agentic_kali.evidence.store import EvidenceStore
-from agentic_kali.policy.approval import request_manual_approval
+from agentic_kali.policy.approval import request_bulk_approval
 from agentic_kali.policy.gate import PolicyGate
 from agentic_kali.ai.planner import AIPlanner
 from agentic_kali.policy.models import Scope
@@ -46,18 +46,16 @@ class Orchestrator:
         return report
 
     def _starting_actions_for_goal(self) -> list[str]:
+        from agentic_kali.tools.catalog import GOAL_TOOLSETS
         g = self.goal.lower()
         allowed = set(self.scope.allowed_actions)
-        if "recon" in g:
-            return [a for a in ["ping_check", "nmap_top_ports", "whatweb", "httpx_probe"] if a in allowed]
-        if "web" in g or "audit" in g:
-            return [a for a in ["whatweb", "httpx_probe", "nuclei_safe", "nikto_scan", "gobuster_dir"] if a in allowed]
-        if "vuln" in g or "vulnerability" in g:
-            return [a for a in ["nuclei_safe", "nuclei_full", "nikto_scan"] if a in allowed]
-        if "full" in g or "pentest" in g or "all" in g:
-            return [a for a in self.scope.allowed_actions if a in set(self.scope.allowed_actions)]
-        # Default: start with recon
-        return [a for a in ["ping_check", "nmap_top_ports", "whatweb", "httpx_probe"] if a in allowed]
+
+        for goal_key, action_list in GOAL_TOOLSETS.items():
+            if goal_key in g or any(w in g for w in goal_key.split()):
+                return [a for a in action_list if a in allowed]
+
+        # Default: recon first
+        return [a for a in GOAL_TOOLSETS["recon"] if a in allowed]
 
     def _run_autonomous_loop(self, max_rounds: int = 12) -> None:
         from agentic_kali.policy.models import Action
@@ -142,17 +140,23 @@ class Orchestrator:
         return proposed
 
     def _execute_actions(self, actions: list) -> None:
-        for action in actions:
+        decisions = [(action, self.policy.evaluate(action)) for action in actions]
+        for action, decision in decisions:
+            self.evidence.log("policy.decision", decision.model_dump())
+
+        needs_approval = [action for action, decision in decisions if decision.approval_required]
+        bulk_approved = False
+        if needs_approval:
+            bulk_approved = request_bulk_approval(needs_approval)
+            if bulk_approved:
+                self.evidence.log("approval.manual", {"actions": [a.name for a in needs_approval]})
+
+        for action, decision in decisions:
             if self.should_stop():
                 self.evidence.log("run.stopped", {"reason": "operator requested stop"})
                 break
-            decision = self.policy.evaluate(action)
-            self.evidence.log("policy.decision", decision.model_dump())
-            if decision.approval_required and request_manual_approval(action):
-                self.evidence.log("approval.manual", {"action": action.name, "target": action.target})
-                self.evidence.log("action.started", {"action": action.name, "target": action.target})
-                self.tools.run(action)
+            if decision.approval_required and not bulk_approved:
                 continue
-            if decision.allowed:
+            if decision.approval_required or decision.allowed:
                 self.evidence.log("action.started", {"action": action.name, "target": action.target})
                 self.tools.run(action)
