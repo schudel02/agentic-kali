@@ -144,6 +144,8 @@ class FloatingPrompt:
         self._tool_timer_after: str | None = None
         self._tool_timer_remaining: int = 0
         self._current_tool_label: tk.StringVar = tk.StringVar(value="")
+        # Sub-agent windows: action_name -> (Toplevel, Text, status_var)
+        self._subagent_windows: dict[str, tuple] = {}
         self.root.after(300, self._show_mode_dialog)
 
     def _build_menus(self) -> None:
@@ -191,6 +193,7 @@ class FloatingPrompt:
         self._awaiting_tool_selection = False
         self._tool_selection_target = None
         self._stop_tool_timer()
+        self._close_subagent_windows()
         stop_all_commands()
         self.status.set("Stopped")
         self._set_thinking("")
@@ -1367,20 +1370,180 @@ class FloatingPrompt:
         self._append_preview_event(event)
         name = event.get("event", "")
         data = event.get("data", {})
+
         if name == "subagents.deployed" and isinstance(data, dict):
-            count = data.get("count", 0)
             agents = data.get("agents", [])
-            names = ", ".join(a.get("action", "") for a in agents)
-            self._current_tool_label.set(f"⚡  {count} sub-agents running: {names[:70]}")
+            count = data.get("count", len(agents))
+            agent_names = ", ".join(a.get("action", "") for a in agents)
+            self._current_tool_label.set(f"⚡  {count} sub-agents running: {agent_names[:70]}")
+            self._open_subagent_windows(agents)
+
         elif name == "action.started" and isinstance(data, dict):
             action = data.get("action", "")
             target = data.get("target", "")
             self._start_tool_timer(action, target)
+            self._subagent_write(action, f"▶ STARTED: {action} on {target}\n", "header")
+
         elif name == "action.completed" and isinstance(data, dict):
             action = data.get("action", "")
             self._tool_timer_var.set(f"✓ {action} done")
-        elif name.startswith("tool.") or name in {"run.completed", "run.stopped"}:
+            self._subagent_mark_done(action)
+
+        elif name == "subagent.error" and isinstance(data, dict):
+            action = data.get("action", "")
+            self._subagent_write(action, f"⚠ ERROR: {data.get('error', 'unknown')}\n", "error")
+            self._subagent_mark_done(action, error=True)
+
+        elif name.startswith("tool.") and name != "tool.description":
+            # Route tool output to the matching sub-agent window
+            action_key = name.removeprefix("tool.")
+            if isinstance(data, dict):
+                stdout = data.get("stdout", "")
+                stderr = data.get("stderr", "")
+                found = data.get("found", True)
+                if not found:
+                    self._subagent_write(action_key, f"⚠ Tool not installed on this system.\n", "error")
+                elif stdout:
+                    self._subagent_write(action_key, stdout[:3000] + ("\n…(truncated)\n" if len(stdout) > 3000 else "\n"), "output")
+                elif stderr:
+                    self._subagent_write(action_key, f"stderr: {stderr[:1000]}\n", "output")
+                else:
+                    self._subagent_write(action_key, "Tool completed with no output.\n", "output")
+
+        elif name in {"run.completed", "run.stopped"}:
             self._stop_tool_timer()
+            self.root.after(8000, self._close_subagent_windows)
+
+    # ── Sub-agent windows ─────────────────────────────────────────────
+
+    def _open_subagent_windows(self, agents: list[dict]) -> None:
+        self._close_subagent_windows()
+        from agentic_kali.tools.catalog import TOOLS as _CAT
+
+        # Determine grid layout
+        count = len(agents)
+        cols = min(count, 2)
+        win_w, win_h = 520, 360
+        gap = 10
+
+        root_x = self.root.winfo_x()
+        root_y = self.root.winfo_y()
+        root_w = self.root.winfo_width()
+        start_x = root_x + root_w + gap
+        start_y = root_y
+
+        for idx, agent_info in enumerate(agents):
+            action = agent_info.get("action", "")
+            target = agent_info.get("target", "")
+            tool = _CAT.get(action)
+            cmd = tool.command if tool else action
+            purpose = (tool.summary if tool else action.replace("_", " "))[:60]
+            agent_num = idx + 1
+
+            col = idx % cols
+            row = idx // cols
+            x = start_x + col * (win_w + gap)
+            y = start_y + row * (win_h + gap)
+
+            win = tk.Toplevel(self.root)
+            win.title(f"Agent {agent_num}  —  {cmd}  —  {purpose}")
+            win.geometry(f"{win_w}x{win_h}+{x}+{y}")
+            win.attributes("-topmost", True)
+
+            # Header bar
+            header = tk.Frame(win, bg="#1a1a2e", pady=4)
+            header.pack(fill="x")
+            tk.Label(
+                header,
+                text=f"Sub-Agent {agent_num}",
+                bg="#1a1a2e", fg="#00d4ff",
+                font=("TkDefaultFont", 10, "bold"), padx=8,
+            ).pack(side="left")
+            status_var = tk.StringVar(value="⏳ running")
+            tk.Label(
+                header,
+                textvariable=status_var,
+                bg="#1a1a2e", fg="#ffcc00",
+                font=("TkDefaultFont", 10, "bold"), padx=8,
+            ).pack(side="right")
+
+            # Tool info bar
+            info = tk.Frame(win, bg="#0d1117", pady=3)
+            info.pack(fill="x")
+            tk.Label(
+                info,
+                text=f"  🔧 {cmd}  |  {purpose}",
+                bg="#0d1117", fg="#c9d1d9",
+                font=("Courier", 9), anchor="w",
+            ).pack(fill="x")
+            tk.Label(
+                info,
+                text=f"  🎯 Target: {target}",
+                bg="#0d1117", fg="#58a6ff",
+                font=("Courier", 9), anchor="w",
+            ).pack(fill="x")
+
+            # Output text
+            text_frame = tk.Frame(win)
+            text_frame.pack(fill="both", expand=True)
+            txt = tk.Text(
+                text_frame,
+                bg="#0d1117", fg="#c9d1d9",
+                font=("Courier", 9),
+                wrap="word", state="disabled",
+            )
+            txt.tag_configure("header", foreground="#00d4ff", font=("Courier", 9, "bold"))
+            txt.tag_configure("output", foreground="#c9d1d9")
+            txt.tag_configure("error", foreground="#ff6b6b")
+            txt.tag_configure("done", foreground="#3fb950", font=("Courier", 9, "bold"))
+            scroll = tk.Scrollbar(text_frame, command=txt.yview)
+            txt.configure(yscrollcommand=scroll.set)
+            txt.pack(side="left", fill="both", expand=True)
+            scroll.pack(side="right", fill="y")
+
+            # Stop button
+            tk.Button(
+                win, text="⏹ Stop", bg="#c0392b", fg="white",
+                font=("TkDefaultFont", 9, "bold"), relief="flat",
+                command=self.stop,
+            ).pack(fill="x", pady=2, padx=4)
+
+            self._subagent_windows[action] = (win, txt, status_var)
+
+    def _subagent_write(self, action: str, text: str, tag: str = "output") -> None:
+        entry = self._subagent_windows.get(action)
+        if not entry:
+            return
+        _, txt, _ = entry
+        try:
+            txt.configure(state="normal")
+            txt.insert("end", text, tag)
+            txt.see("end")
+            txt.configure(state="disabled")
+        except tk.TclError:
+            pass
+
+    def _subagent_mark_done(self, action: str, error: bool = False) -> None:
+        entry = self._subagent_windows.get(action)
+        if not entry:
+            return
+        win, txt, status_var = entry
+        label = "⚠ error" if error else "✓ complete"
+        color = "#ff6b6b" if error else "#3fb950"
+        try:
+            status_var.set(label)
+            self._subagent_write(action, f"\n{label.upper()}\n", "done" if not error else "error")
+            win.title(win.title().replace("Agent ", f"{'⚠' if error else '✓'} Agent "))
+        except tk.TclError:
+            pass
+
+    def _close_subagent_windows(self) -> None:
+        for action, (win, _, _) in list(self._subagent_windows.items()):
+            try:
+                win.destroy()
+            except tk.TclError:
+                pass
+        self._subagent_windows.clear()
 
     def show_preview(self, attached: bool = False) -> None:
         if attached:
@@ -1745,6 +1908,7 @@ class FloatingPrompt:
         self._awaiting_autonomous_goal = False
         self._awaiting_autonomous_target = False
         self._pending_autonomous_goal = ""
+        self._close_subagent_windows()
         self.status.set("")
         self._set_thinking("")
         self.root.title("Agentic Kali")
