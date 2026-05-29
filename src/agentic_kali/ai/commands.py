@@ -15,6 +15,12 @@ KEYWORDS = {
     "ffuf_fuzz": ("ffuf", "fuzz", "fuzzing"),
     "nikto_scan": ("nikto", "web server scan", "web scan"),
     "hydra_brute": ("hydra", "brute force", "credential test", "password test"),
+    "api_probe": ("api probe", "api check", "api headers", "rest api", "graphql", "swagger", "openapi"),
+    "api_discover": ("api discover", "api endpoints", "api parameters", "api enum", "find endpoints"),
+    "api_fuzz": ("api fuzz", "fuzz api", "api wordlist"),
+    "api_nuclei": ("api scan", "api vuln", "api vulnerability"),
+    "burpsuite": ("burp suite", "burpsuite", "open burp", "launch burp", "start burp"),
+    "burp_proxy_scan": ("burp scan", "scan through burp", "proxy scan", "burp proxy"),
 }
 
 AUTO_PHRASES = ("you choose", "auto", "autonomous", "automatically", "decide for me", "pick for me", "you pick")

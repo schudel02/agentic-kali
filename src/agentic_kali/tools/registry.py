@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 import shlex
+import subprocess
+import threading
 from typing import Callable
+
+_BURP_PROCESS: subprocess.Popen | None = None
+_BURP_LOCK = threading.Lock()
 
 from agentic_kali.evidence.store import EvidenceStore
 from agentic_kali.policy.models import Action
@@ -50,6 +55,11 @@ class ToolRegistry:
         self.should_stop = should_stop or (lambda: False)
 
     def run(self, action: Action) -> None:
+        # Special: launch Burp Suite GUI as background process
+        if action.name == "burpsuite":
+            self._launch_burpsuite(action)
+            return
+
         tool = TOOLS.get(action.name)
         if not tool:
             self.evidence.log("tool.skipped", {"action": action.name, "reason": "unknown tool"})
@@ -60,6 +70,10 @@ class ToolRegistry:
             "target": action.target,
             "description": tool.summary,
         })
+
+        # Proxy-dependent tools: ensure Burp is running first
+        if action.name in {"burp_proxy_scan", "burp_spider"}:
+            self._ensure_burp_running()
 
         # Build command list
         args_str = tool.args_template.replace("{target}", action.target)
@@ -76,6 +90,67 @@ class ToolRegistry:
 
         parser = _PARSERS.get(action.name)
         self._record_result(tool.summary, action, result.as_dict(), parser)
+
+    def _launch_burpsuite(self, action: Action) -> None:
+        global _BURP_PROCESS
+        import shutil
+        import time
+        if not shutil.which("burpsuite"):
+            self.evidence.finding(
+                title="Burp Suite not installed",
+                target=action.target,
+                severity="info",
+                evidence="burpsuite command not found. Install with: sudo apt install burpsuite",
+            )
+            return
+        with _BURP_LOCK:
+            if _BURP_PROCESS and _BURP_PROCESS.poll() is None:
+                self.evidence.finding(
+                    title="Burp Suite already running",
+                    target=action.target,
+                    severity="info",
+                    evidence="Burp Suite is already running. Proxy listening on 127.0.0.1:8080.",
+                )
+                return
+            try:
+                _BURP_PROCESS = subprocess.Popen(
+                    ["burpsuite"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                time.sleep(4)  # Give Burp time to start proxy
+                self.evidence.finding(
+                    title="Burp Suite launched",
+                    target=action.target,
+                    severity="info",
+                    evidence=(
+                        "Burp Suite opened. Proxy listening on 127.0.0.1:8080.\n"
+                        "Subsequent proxy-aware tools will route traffic through Burp.\n"
+                        "Use the Burp UI to review intercepted requests, run active scanner, "
+                        "and configure scope."
+                    ),
+                )
+            except Exception as exc:
+                self.evidence.finding(
+                    title="Burp Suite launch failed",
+                    target=action.target,
+                    severity="info",
+                    evidence=str(exc),
+                )
+
+    def _ensure_burp_running(self) -> None:
+        global _BURP_PROCESS
+        import shutil, time
+        with _BURP_LOCK:
+            if _BURP_PROCESS and _BURP_PROCESS.poll() is None:
+                return
+            if shutil.which("burpsuite"):
+                _BURP_PROCESS = subprocess.Popen(
+                    ["burpsuite"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                time.sleep(4)
 
     def _record_result(self, title: str, action: Action, result: dict, parser=None) -> None:
         metadata: dict = {}

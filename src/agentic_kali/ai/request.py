@@ -118,6 +118,10 @@ _AUTONOMOUS_PHRASES = (
     "auto test",
     "auto scan",
     "auto recon",
+    "run auto",
+    "auto tests",
+    "run tests on your own",
+    "do it yourself",
 )
 
 

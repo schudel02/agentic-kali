@@ -194,6 +194,37 @@ TOOLS: dict[str, KaliTool] = {
         "Web application security testing platform (GUI).",
         "burpsuite", "",
     ),
+    "burp_proxy_scan": KaliTool(
+        "httpx", "web", "approval_required",
+        "Run HTTP probe through Burp Suite proxy (captures traffic in Burp).",
+        "httpx", "-silent -title -tech-detect -status-code -u {target} -http-proxy http://127.0.0.1:8080",
+    ),
+    "burp_spider": KaliTool(
+        "gospider", "web", "approval_required",
+        "Spider target through Burp proxy for passive analysis.",
+        "gospider", "-s {target} -p http://127.0.0.1:8080 -d 2 -q",
+    ),
+    # ── API Testing ────────────────────────────────────────────────────
+    "api_discover": KaliTool(
+        "arjun", "api", "approval_required",
+        "Discover hidden API parameters and endpoints.",
+        "arjun", "-u {target} --stable",
+    ),
+    "api_fuzz": KaliTool(
+        "ffuf", "api", "approval_required",
+        "Fuzz API endpoints with common API wordlist.",
+        "ffuf", "-u {target}/FUZZ -w /usr/share/wordlists/seclists/Discovery/Web-Content/api/objects.txt -mc 200,201,204,400,401,403,405 -s",
+    ),
+    "api_nuclei": KaliTool(
+        "nuclei", "api", "approval_required",
+        "Run nuclei API-specific vulnerability templates.",
+        "nuclei", "-u {target} -tags api,graphql,rest -severity info,low,medium,high -jsonl",
+    ),
+    "api_probe": KaliTool(
+        "httpx", "api", "safe_auto",
+        "Probe API endpoints — check headers, auth, CORS, methods.",
+        "httpx", "-silent -status-code -method -content-type -u {target} -path /api,/api/v1,/api/v2,/graphql,/rest,/swagger,/openapi.json,/v1,/v2",
+    ),
     "caido": KaliTool(
         "caido", "web", "approval_required",
         "Web security auditing tool.",
@@ -623,6 +654,14 @@ GOAL_TOOLSETS: dict[str, list[str]] = {
     "forensics": [
         "binwalk", "bulk_extractor", "steghide", "autopsy", "yara",
         "jadx", "apktool", "ghidra",
+    ],
+    "api": [
+        "api_probe", "api_discover", "api_nuclei", "api_fuzz",
+        "httpx_probe", "nuclei_safe", "arjun",
+    ],
+    "burp": [
+        "burp_proxy_scan", "api_probe", "whatweb", "httpx_probe",
+        "nikto_scan", "gobuster_dir",
     ],
 }
 

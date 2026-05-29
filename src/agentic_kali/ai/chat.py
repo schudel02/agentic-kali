@@ -175,4 +175,38 @@ def _red_team_response(text: str) -> str | None:
             "Ensure the target is in your authorized scope before deploying. Say 'open msfconsole' to launch."
         )
 
+    if any(p in text for p in ("api test", "test api", "api scan", "api endpoint", "rest api", "graphql", "swagger", "openapi", "api security")):
+        return (
+            "Admin Mode — API security testing:\n\n"
+            "Probe common API paths:\n"
+            "```bash\n"
+            "httpx -silent -status-code -u TARGET -path /api,/api/v1,/v1,/graphql,/swagger,/openapi.json\n"
+            "```\n\n"
+            "Discover hidden parameters:\n"
+            "```bash\n"
+            "arjun -u TARGET/api/endpoint --stable\n"
+            "```\n\n"
+            "Fuzz API endpoints:\n"
+            "```bash\n"
+            "ffuf -u TARGET/FUZZ -w /usr/share/wordlists/seclists/Discovery/Web-Content/api/objects.txt -mc 200,201,400,401,403\n"
+            "```\n\n"
+            "Nuclei API templates:\n"
+            "```bash\n"
+            "nuclei -u TARGET -tags api,graphql,rest,swagger -severity info,low,medium,high\n"
+            "```\n\n"
+            "Say 'run auto tests' and choose option 10 (API Testing) to run all autonomously."
+        )
+
+    if any(p in text for p in ("open burp", "launch burp", "start burp", "burp suite", "burpsuite")):
+        return (
+            "Admin Mode — Burp Suite:\n\n"
+            "Launching Burp Suite and routing tools through its proxy lets you intercept traffic,\n"
+            "run the active scanner, and modify requests in real time.\n\n"
+            "Say 'run auto tests' and choose option 11 (Burp Suite) to:\n"
+            "  1. Launch Burp Suite GUI automatically\n"
+            "  2. Route httpx and spider tools through 127.0.0.1:8080\n"
+            "  3. Capture all traffic in Burp for manual review and active scanning\n\n"
+            "Or I can open it directly — just say 'open burpsuite'."
+        )
+
     return None

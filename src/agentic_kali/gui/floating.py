@@ -284,6 +284,7 @@ class FloatingPrompt:
                     "1": "recon", "2": "web audit", "3": "vulnerability scan",
                     "4": "full pentest", "5": "wifi", "6": "active directory",
                     "7": "credentials", "8": "osint", "9": "forensics",
+                    "10": "api", "11": "burp",
                 }
                 goal = _goal_map.get(command.strip().rstrip("."), command.lower().strip())
                 target = self.last_target
@@ -354,7 +355,9 @@ class FloatingPrompt:
                     "  6. Active Directory   — bloodhound, crackmapexec, impacket\n"
                     "  7. Credentials        — hydra, john, hashcat, cewl\n"
                     "  8. OSINT              — theHarvester, sherlock, spiderfoot\n"
-                    "  9. Forensics          — binwalk, yara, jadx, ghidra\n\n"
+                    "  9. Forensics          — binwalk, yara, jadx, ghidra\n"
+                    " 10. API Testing        — arjun, api probe, nuclei API templates\n"
+                    " 11. Burp Suite         — launch Burp + route tools through proxy\n\n"
                     f"Target: {target or self.last_target or '(tell me the target first)'}\n"
                     "Reply with a number or name.",
                 )
@@ -989,17 +992,23 @@ class FloatingPrompt:
         from agentic_kali.tools.catalog import TOOLS as _CAT
         tool = _CAT.get(action)
         cmd = tool.command if tool else action
-        summary = tool.summary if tool else action.replace("_", " ")
-        self._current_tool_label.set(f"▶  {cmd}  —  {summary[:55]}")
+        summary = (tool.summary if tool else action.replace("_", " "))[:50]
+        self._current_tool_label.set(f"▶  {cmd}  —  {summary}")
         self._tool_timer_remaining = self._tool_estimate(action)
+        self._active_tool_cmd = cmd
         self._tick_tool_timer()
 
     def _tick_tool_timer(self) -> None:
         remaining = max(0, self._tool_timer_remaining)
         mins, secs = divmod(remaining, 60)
-        self._tool_timer_var.set(f"~{mins:02d}:{secs:02d}")
+        time_str = f"~{mins:02d}:{secs:02d}"
+        self._tool_timer_var.set(time_str)
+        # Also push to status bar so it's visible even if preview panel is gone
+        cmd = getattr(self, "_active_tool_cmd", "tool")
+        self.status.set(f"Running: {cmd}  —  {time_str} remaining")
         if remaining <= 0:
-            self._tool_timer_var.set("finishing...")
+            self._tool_timer_var.set("finishing…")
+            self.status.set(f"Running: {cmd}  —  finishing…")
             self._tool_timer_after = None
             return
         self._tool_timer_remaining -= 1
@@ -1009,9 +1018,9 @@ class FloatingPrompt:
         if self._tool_timer_after:
             self.root.after_cancel(self._tool_timer_after)
             self._tool_timer_after = None
-        self._tool_timer_var.set("done")
-        self.root.after(2000, lambda: self._tool_timer_var.set(""))
-        self.root.after(2000, lambda: self._current_tool_label.set(""))
+        self._tool_timer_var.set("✓ done")
+        self.root.after(1500, lambda: self._tool_timer_var.set(""))
+        self.root.after(1500, lambda: self._current_tool_label.set(""))
 
     def _start_countdown(self, seconds: int) -> None:
         self.countdown_remaining = seconds
@@ -1395,6 +1404,8 @@ class FloatingPrompt:
         toolbar.pack(fill="x", pady=(0, 4))
         tk.Radiobutton(toolbar, text="Transcript", variable=self.preview_mode, value="transcript", command=self._refresh_preview).pack(side="left")
         tk.Radiobutton(toolbar, text="Raw Events", variable=self.preview_mode, value="raw", command=self._refresh_preview).pack(side="left", padx=8)
+        tk.Button(toolbar, text="⏹ Stop", bg="#c0392b", fg="white", font=("TkDefaultFont", 9, "bold"),
+                  relief="flat", padx=8, command=self.stop).pack(side="right", padx=4)
 
         # Per-tool status bar
         tool_bar = tk.Frame(frame, bg="#1a1a2e", pady=4)
