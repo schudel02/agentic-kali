@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 from typing import Any, Callable
 
@@ -9,6 +10,7 @@ class EvidenceStore:
         self.events: list[dict[str, Any]] = []
         self.findings: list[dict[str, Any]] = []
         self.on_event = on_event
+        self._lock = threading.Lock()
 
     def log(self, event: str, data: dict[str, Any]) -> None:
         record = {
@@ -16,7 +18,8 @@ class EvidenceStore:
             "event": event,
             "data": data,
         }
-        self.events.append(record)
+        with self._lock:
+            self.events.append(record)
         if self.on_event:
             self.on_event(record)
 
@@ -28,12 +31,13 @@ class EvidenceStore:
         evidence: str,
         metadata: dict[str, Any] | None = None,
     ) -> None:
-        self.findings.append(
-            {
-                "title": title,
-                "target": target,
-                "severity": severity,
-                "evidence": evidence,
-                "metadata": metadata or {},
-            }
-        )
+        with self._lock:
+            self.findings.append(
+                {
+                    "title": title,
+                    "target": target,
+                    "severity": severity,
+                    "evidence": evidence,
+                    "metadata": metadata or {},
+                }
+            )

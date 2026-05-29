@@ -437,7 +437,7 @@ class FloatingPrompt:
         actions = actions_from_command(command, scope.allowed_actions)
         if autonomous:
             goal_label = goal or "full assessment"
-            self._say("Agent Kal", f"Starting autonomous {goal_label} on {target or 'the target'}. I will run tools, read the results, and decide what to run next. Press Stop at any time.")
+            self._say("Agent Kal", f"Starting autonomous {goal_label} on {target or 'the target'}. Deploying sub-agents to run tools in parallel. I will read results between rounds and chain the next set of tests. Press Stop at any time.")
         else:
             self._say("Agent Kal", self._short_run_summary(command, actions, target))
         self._note(self._run_description(actions, target or ", ".join(scope.targets)))
@@ -1367,10 +1367,18 @@ class FloatingPrompt:
         self._append_preview_event(event)
         name = event.get("event", "")
         data = event.get("data", {})
-        if name == "action.started" and isinstance(data, dict):
+        if name == "subagents.deployed" and isinstance(data, dict):
+            count = data.get("count", 0)
+            agents = data.get("agents", [])
+            names = ", ".join(a.get("action", "") for a in agents)
+            self._current_tool_label.set(f"⚡  {count} sub-agents running: {names[:70]}")
+        elif name == "action.started" and isinstance(data, dict):
             action = data.get("action", "")
             target = data.get("target", "")
             self._start_tool_timer(action, target)
+        elif name == "action.completed" and isinstance(data, dict):
+            action = data.get("action", "")
+            self._tool_timer_var.set(f"✓ {action} done")
         elif name.startswith("tool.") or name in {"run.completed", "run.stopped"}:
             self._stop_tool_timer()
 
@@ -1495,6 +1503,12 @@ class FloatingPrompt:
             return "result", "RESULT"
         if name == "run.preparing":
             return "action", "PLAN"
+        if name == "subagents.deployed":
+            return "action", "⚡ SUB-AGENTS"
+        if name == "action.completed":
+            return "result", "✓ DONE"
+        if name == "subagent.error":
+            return "result", "⚠ ERROR"
         return "action", "ACTION"
 
     def _format_transcript_text(self, text: str) -> str:
@@ -1533,6 +1547,22 @@ class FloatingPrompt:
         name = event.get("event", "")
         data = event.get("data", {})
         target = data.get("target", "the target") if isinstance(data, dict) else "the target"
+        if name == "subagents.deployed":
+            agents = data.get("agents", []) if isinstance(data, dict) else []
+            count = data.get("count", len(agents))
+            lines = [f"⚡ DEPLOYING {count} SUB-AGENT{'S' if count != 1 else ''} IN PARALLEL:"]
+            for i, a in enumerate(agents, 1):
+                from agentic_kali.tools.catalog import TOOLS as _CAT
+                t = _CAT.get(a.get("action", ""))
+                cmd = t.command if t else a.get("action", "")
+                lines.append(f"  Sub-agent {i}: {cmd}  →  {a.get('target', '')}")
+            return "\n".join(lines)
+        if name == "action.completed":
+            action = data.get("action", "tool") if isinstance(data, dict) else "tool"
+            return f"✓ Sub-agent finished: {action}"
+        if name == "subagent.error":
+            action = data.get("action", "tool") if isinstance(data, dict) else "tool"
+            return f"⚠ Sub-agent error: {action} — {data.get('error', '')}"
         if name == "run.preparing":
             actions = ", ".join(data.get("actions", [])) if isinstance(data, dict) else "selected checks"
             return f"Preparing the test plan for {target}. Agent Kal selected: {actions}."

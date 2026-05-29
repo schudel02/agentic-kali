@@ -140,6 +140,8 @@ class Orchestrator:
         return proposed
 
     def _execute_actions(self, actions: list) -> None:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         decisions = [(action, self.policy.evaluate(action)) for action in actions]
         for action, decision in decisions:
             self.evidence.log("policy.decision", decision.model_dump())
@@ -151,12 +153,41 @@ class Orchestrator:
             if bulk_approved:
                 self.evidence.log("approval.manual", {"actions": [a.name for a in needs_approval]})
 
-        for action, decision in decisions:
+        runnable = [
+            action for action, decision in decisions
+            if (decision.allowed or (decision.approval_required and bulk_approved))
+            and not self.should_stop()
+        ]
+
+        if not runnable:
+            return
+
+        # Announce all sub-agents being deployed
+        self.evidence.log("subagents.deployed", {
+            "count": len(runnable),
+            "agents": [{"action": a.name, "target": a.target} for a in runnable],
+        })
+
+        def _run_one(action) -> None:
             if self.should_stop():
-                self.evidence.log("run.stopped", {"reason": "operator requested stop"})
-                break
-            if decision.approval_required and not bulk_approved:
-                continue
-            if decision.approval_required or decision.allowed:
-                self.evidence.log("action.started", {"action": action.name, "target": action.target})
-                self.tools.run(action)
+                return
+            # Each sub-agent gets its own ToolRegistry instance so they don't share state
+            from agentic_kali.tools.registry import ToolRegistry
+            runner = ToolRegistry(self.evidence, should_stop=self.should_stop)
+            self.evidence.log("action.started", {"action": action.name, "target": action.target})
+            runner.run(action)
+            self.evidence.log("action.completed", {"action": action.name, "target": action.target})
+
+        max_workers = min(len(runnable), 6)  # cap at 6 parallel sub-agents
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="subagent") as pool:
+            futures = {pool.submit(_run_one, action): action for action in runnable}
+            for future in as_completed(futures):
+                action = futures[future]
+                try:
+                    future.result()
+                except Exception as exc:
+                    self.evidence.log("subagent.error", {
+                        "action": action.name,
+                        "target": action.target,
+                        "error": str(exc),
+                    })
