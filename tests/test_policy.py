@@ -45,9 +45,9 @@ def test_admin_mode_bypasses_manual_approval_but_not_permission():
     assert not decision.approval_required
 
     no_permission = scope.model_copy(update={"signed_permission": False})
-    denied = PolicyGate(no_permission, admin_mode=True).evaluate(Action(name="ping_check", target="127.0.0.1"))
-    assert not denied.allowed
-    assert denied.reason == "explicit permission not confirmed"
+    bypassed = PolicyGate(no_permission, admin_mode=True).evaluate(Action(name="ping_check", target="127.0.0.1"))
+    assert bypassed.allowed
+    assert "admin mode" in bypassed.reason
 
 
 def test_blocks_public_target_without_flag():

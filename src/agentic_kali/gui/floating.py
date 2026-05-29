@@ -12,7 +12,7 @@ from tkinter import messagebox
 from typing import Any
 
 from agentic_kali.core.orchestrator import Orchestrator
-from agentic_kali.policy.security_settings import ADMIN_GUARDRAILS, ALL_ACTIONS, SAFE_RECON_ACTIONS, UNSAFE_BUILD_TERMS, load_admin_guardrails
+from agentic_kali.policy.security_settings import ADMIN_GUARDRAILS, ALL_ACTIONS, ALL_ADMIN_ACTIONS, SAFE_RECON_ACTIONS, UNSAFE_BUILD_TERMS, all_blocked_build_terms, load_admin_guardrails
 from agentic_kali.ai.commands import actions_from_command
 from agentic_kali.ai.request import extract_target, summarize_request, wants_tool_run, wants_tool_run_intent
 from agentic_kali.ai.chat import ChatSession
@@ -133,6 +133,7 @@ class FloatingPrompt:
         self.lab_servers: list[LabServer] = []
         self.countdown_after: str | None = None
         self.countdown_remaining = 0
+        self._last_suggested_target: str | None = None
         self.root.after(300, self._show_mode_dialog)
 
     def _build_menus(self) -> None:
@@ -170,8 +171,10 @@ class FloatingPrompt:
 
     def stop(self) -> None:
         self.stop_requested = True
+        self.say_queue.clear()
+        self.speaking = False
         stop_all_commands()
-        self.status.set("Stopping...")
+        self.status.set("Stopped")
         self._set_thinking("")
 
     def _show_mode_dialog(self) -> None:
@@ -260,6 +263,13 @@ class FloatingPrompt:
                     return
                 self._run_scoped_tests(command, scope, target)
                 return
+            if target and not self._wants_run(command, target) and target != self._last_suggested_target:
+                self._last_suggested_target = target
+                self.last_target = target
+                self._set_thinking("")
+                self._say("Agent Kal", self._build_target_suggestion(target))
+                self.status.set(f"Target: {target}")
+                return
             launch = parse_launch_request(command) or self._continued_launch(command)
             if launch:
                 self._set_thinking("")
@@ -304,6 +314,12 @@ class FloatingPrompt:
             messagebox.showerror("Agentic Kali", str(exc))
 
     def _run_scoped_tests(self, command: str, scope: Scope, target: str | None) -> None:
+        if self.admin_mode:
+            scope = scope.model_copy(update={
+                "allowed_actions": list(dict.fromkeys([*scope.allowed_actions, *ALL_ADMIN_ACTIONS])),
+                "intrusive_allowed": True,
+                "signed_permission": True,
+            })
         actions = actions_from_command(command, scope.allowed_actions)
         self._say("Agent Kal", self._short_run_summary(command, actions, target))
         self._note(self._run_description(actions, target or ", ".join(scope.targets)))
@@ -492,6 +508,25 @@ class FloatingPrompt:
         )
         self._write_scope(updated)
         return updated
+
+    def _build_target_suggestion(self, target: str) -> str:
+        lines = [
+            f"Target detected: {target}\n",
+            "Here are tests I can run:\n",
+            "- Quick recon: ping_check, nmap_top_ports, whatweb, httpx_probe",
+            "- Vulnerability scan: nuclei_safe",
+            "- SQL injection check: sqlmap_safe",
+        ]
+        if self.admin_mode:
+            lines += [
+                "- Directory discovery: gobuster_dir",
+                "- Web fuzzing: ffuf_fuzz",
+                "- Web vulnerability scan: nikto_scan",
+                "- Full nuclei scan: nuclei_full",
+                "- Credential test: hydra_brute",
+            ]
+        lines.append("\nTell me which tests to run, or say 'run all' to run everything.")
+        return "\n".join(lines)
 
     def _is_intrusive_request(self, command: str) -> bool:
         text = command.lower()
@@ -962,6 +997,9 @@ class FloatingPrompt:
         self._drain_say_queue()
 
     def _type_text(self, text: str, index: int = 0, tag: str = "agent") -> None:
+        if self.stop_requested:
+            self.speaking = False
+            return
         if index >= len(text):
             self._drain_say_queue()
             return
@@ -1396,8 +1434,9 @@ class FloatingPrompt:
         targets.insert(0, ",".join(scope.targets))
         intrusive = tk.BooleanVar(value=scope.intrusive_allowed)
         public_targets = tk.BooleanVar(value=scope.public_targets_allowed)
+        all_terms = all_blocked_build_terms()
         guardrails = tk.Text(window, height=6, wrap="word")
-        guardrails.insert("1.0", "\n".join(load_admin_guardrails()))
+        guardrails.insert("1.0", "\n".join(all_terms))
 
         tk.Label(window, text="Targets", anchor="w").pack(fill="x", padx=10, pady=(12, 0))
         targets.pack(fill="x", padx=10)
@@ -1405,10 +1444,10 @@ class FloatingPrompt:
         actions.pack(fill="x", padx=10)
         tk.Checkbutton(window, text="Intrusive tests allowed for authorized targets", variable=intrusive).pack(anchor="w", padx=10, pady=(12, 0))
         tk.Checkbutton(window, text="Public targets explicitly authorized", variable=public_targets).pack(anchor="w", padx=10)
-        tk.Label(window, text="Extra blocked build terms (one per line)", anchor="w").pack(fill="x", padx=10, pady=(12, 0))
+        tk.Label(window, text="Blocked build terms — all editable in Admin Mode (one per line)", anchor="w").pack(fill="x", padx=10, pady=(12, 0))
         guardrails.pack(fill="both", expand=True, padx=10)
 
-        tk.Label(window, text=f"Built-in guardrails stay active: {len(UNSAFE_BUILD_TERMS)} terms. Admin extras save to {ADMIN_GUARDRAILS}", anchor="w", fg="#555555", wraplength=520).pack(fill="x", padx=10, pady=(12, 0))
+        tk.Label(window, text=f"Saves to {ADMIN_GUARDRAILS} and overrides all built-in terms.", anchor="w", fg="#555555", wraplength=520).pack(fill="x", padx=10, pady=(4, 0))
         tk.Button(window, text="Save Security Settings", command=lambda: self._save_security_scope(scope, targets, actions, intrusive, public_targets, guardrails)).pack(fill="x", padx=10, pady=14)
 
     def show_watch_mode(self) -> None:
@@ -1484,7 +1523,7 @@ class FloatingPrompt:
 
     def _write_admin_guardrails(self, terms: list[str]) -> None:
         ADMIN_GUARDRAILS.parent.mkdir(parents=True, exist_ok=True)
-        ADMIN_GUARDRAILS.write_text(json.dumps({"blocked_build_terms": terms}, indent=2), encoding="utf-8")
+        ADMIN_GUARDRAILS.write_text(json.dumps({"all_blocked_terms": terms}, indent=2), encoding="utf-8")
         try:
             ADMIN_GUARDRAILS.chmod(0o660)
         except OSError:

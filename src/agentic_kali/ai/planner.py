@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from agentic_kali.policy.security_settings import ALL_ACTIONS, INTRUSIVE_ACTIONS
+from agentic_kali.policy.security_settings import ALL_ACTIONS, ALL_ADMIN_ACTIONS, INTRUSIVE_ACTIONS
 from agentic_kali.ai.provider import AIProvider
 from agentic_kali.ai.commands import actions_from_command
 from agentic_kali.evidence.store import EvidenceStore
@@ -63,10 +63,11 @@ class AIPlanner:
             for f in self.evidence.findings
         ]
         prior_completed = self._prior_completed()
+        known = ALL_ADMIN_ACTIONS if any(a not in ALL_ACTIONS for a in self.scope.allowed_actions) else ALL_ACTIONS
 
         return (
             "Return only JSON like {\"actions\":[\"ping_check\"]}. "
-            f"Known actions: {', '.join(ALL_ACTIONS)}. "
+            f"Known actions: {', '.join(known)}. "
             f"Scope allowed actions: {', '.join(self.scope.allowed_actions)}. "
             f"Intrusive allowed: {self.scope.intrusive_allowed}. "
             f"User command: {self.command}. "
