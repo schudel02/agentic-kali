@@ -13,7 +13,7 @@ from typing import Any
 
 from agentic_kali.core.orchestrator import Orchestrator
 from agentic_kali.policy.security_settings import ADMIN_GUARDRAILS, ALL_ACTIONS, ALL_ADMIN_ACTIONS, SAFE_RECON_ACTIONS, UNSAFE_BUILD_TERMS, all_blocked_build_terms, load_admin_guardrails
-from agentic_kali.ai.commands import actions_from_command
+from agentic_kali.ai.commands import actions_from_command, is_auto_command
 from agentic_kali.ai.request import extract_target, summarize_request, wants_tool_run, wants_tool_run_intent
 from agentic_kali.ai.chat import ChatSession
 from agentic_kali.desktop.watch import WatchMode
@@ -134,6 +134,8 @@ class FloatingPrompt:
         self.countdown_after: str | None = None
         self.countdown_remaining = 0
         self._last_suggested_target: str | None = None
+        self._awaiting_tool_selection: bool = False
+        self._tool_selection_target: str | None = None
         self.root.after(300, self._show_mode_dialog)
 
     def _build_menus(self) -> None:
@@ -233,6 +235,20 @@ class FloatingPrompt:
                 self._say("Agent Kal", "Admin Approved Mode enabled. All guardrails bypassed for this session.")
                 self.status.set("Admin Approved Mode")
                 return
+            # Handle pending tool selection response
+            if self._awaiting_tool_selection and self._tool_selection_target:
+                target = self._tool_selection_target
+                self._awaiting_tool_selection = False
+                self._tool_selection_target = None
+                self._set_thinking("")
+                scope = self._ensure_consent(scope, target)
+                if not scope:
+                    self._say("Agent Kal", "Auth required.")
+                    return
+                autonomous = is_auto_command(command)
+                self._run_scoped_tests(command, scope, target, autonomous=autonomous)
+                return
+
             if self._handle_onboarding(command, scope):
                 self._set_thinking("")
                 return
@@ -268,11 +284,14 @@ class FloatingPrompt:
                     self._say("Agent Kal", "Auth required.")
                     self.status.set("Consent required")
                     return
-                self._run_scoped_tests(command, scope, target)
+                autonomous = is_auto_command(command)
+                self._run_scoped_tests(command, scope, target, autonomous=autonomous)
                 return
             if target and not self._wants_run(command, target) and target != self._last_suggested_target:
                 self._last_suggested_target = target
                 self.last_target = target
+                self._awaiting_tool_selection = True
+                self._tool_selection_target = target
                 self._set_thinking("")
                 self._say("Agent Kal", self._build_target_suggestion(target))
                 self.status.set(f"Target: {target}")
@@ -320,7 +339,7 @@ class FloatingPrompt:
             self._say("Agent Kal", f"I need setup before I can run: {exc}")
             messagebox.showerror("Agentic Kali", str(exc))
 
-    def _run_scoped_tests(self, command: str, scope: Scope, target: str | None) -> None:
+    def _run_scoped_tests(self, command: str, scope: Scope, target: str | None, autonomous: bool = False) -> None:
         if self.admin_mode:
             scope = scope.model_copy(update={
                 "allowed_actions": list(dict.fromkeys([*scope.allowed_actions, *ALL_ADMIN_ACTIONS])),
@@ -328,7 +347,10 @@ class FloatingPrompt:
                 "signed_permission": True,
             })
         actions = actions_from_command(command, scope.allowed_actions)
-        self._say("Agent Kal", self._short_run_summary(command, actions, target))
+        if autonomous:
+            self._say("Agent Kal", f"Autonomous mode: I will choose and chain tools independently for {target or 'the target'}. I'll stop when I run out of useful next steps or you press Stop.")
+        else:
+            self._say("Agent Kal", self._short_run_summary(command, actions, target))
         self._note(self._run_description(actions, target or ", ".join(scope.targets)))
         self._gui_event("run.preparing", {"target": target or scope.targets, "actions": actions})
         self._enter_run_mode(actions)
@@ -338,6 +360,7 @@ class FloatingPrompt:
             command=command,
             should_stop=lambda: self.stop_requested,
             admin_mode=self.admin_mode,
+            autonomous=autonomous,
         ).run()
         self.events = report.get("events", [])
         self._refresh_preview()
@@ -517,22 +540,36 @@ class FloatingPrompt:
         return updated
 
     def _build_target_suggestion(self, target: str) -> str:
-        lines = [
-            f"Target detected: {target}\n",
-            "Here are tests I can run:\n",
-            "- Quick recon: ping_check, nmap_top_ports, whatweb, httpx_probe",
-            "- Vulnerability scan: nuclei_safe",
-            "- SQL injection check: sqlmap_safe",
+        from agentic_kali.policy.security_settings import ALL_ADMIN_ACTIONS
+        scope = self._load_scope_or_none()
+        allowed = set(scope.allowed_actions if scope else []) | set(ALL_ADMIN_ACTIONS if self.admin_mode else [])
+
+        tool_info = {
+            "ping_check":    "Ping check — confirm target is reachable",
+            "nmap_top_ports":"Nmap — port scan and service detection",
+            "whatweb":       "WhatWeb — web technology fingerprinting",
+            "httpx_probe":   "httpx — HTTP probe, titles, redirects",
+            "nuclei_safe":   "Nuclei (safe) — low-risk vulnerability templates",
+            "sqlmap_safe":   "sqlmap — conservative SQL injection check",
+            "gobuster_dir":  "Gobuster — directory and path discovery [Admin]",
+            "ffuf_fuzz":     "ffuf — web path fuzzing [Admin]",
+            "nikto_scan":    "Nikto — web server vulnerability scan [Admin]",
+            "nuclei_full":   "Nuclei (full) — medium/high severity templates [Admin]",
+            "hydra_brute":   "Hydra — authorized credential brute-force [Admin]",
+        }
+
+        available = [name for name in tool_info if name in allowed]
+        lines = [f"Target: {target}\n\nAvailable tools:"]
+        for i, name in enumerate(available, 1):
+            lines.append(f"  {i}. {tool_info[name]}")
+        lines += [
+            "",
+            "Reply with:",
+            "  • A number or name — run that tool",
+            "  • 'run all' — run every available tool",
+            "  • 'quick recon' — ping + nmap + whatweb + httpx",
+            "  • 'you choose' or 'auto' — let me pick and chain tools autonomously",
         ]
-        if self.admin_mode:
-            lines += [
-                "- Directory discovery: gobuster_dir",
-                "- Web fuzzing: ffuf_fuzz",
-                "- Web vulnerability scan: nikto_scan",
-                "- Full nuclei scan: nuclei_full",
-                "- Credential test: hydra_brute",
-            ]
-        lines.append("\nTell me which tests to run, or say 'run all' to run everything.")
         return "\n".join(lines)
 
     def _is_intrusive_request(self, command: str) -> bool:
@@ -1491,6 +1528,8 @@ class FloatingPrompt:
         self.stop_requested = False
         self.last_target = None
         self._last_suggested_target = None
+        self._awaiting_tool_selection = False
+        self._tool_selection_target = None
         self.status.set("")
         self._set_thinking("")
         self.root.title("Agentic Kali")
