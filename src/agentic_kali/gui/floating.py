@@ -1800,10 +1800,48 @@ class FloatingPrompt:
         return f"{explanations.get(action, 'Running the selected Kali tool.')} Target: {target}."
 
     def show_settings(self) -> None:
+        from agentic_kali.config import CONFIG_PATH, load_config
         window = tk.Toplevel(self.root)
         window.title("Agentic Kali Settings")
         window.attributes("-topmost", True)
-        window.geometry("520x560+480+80")
+        window.geometry("560x720+480+40")
+
+        # ── AI Provider section ────────────────────────────────────────
+        tk.Label(window, text="AI Provider (Claude takes priority)", font=("TkDefaultFont", 10, "bold"),
+                 anchor="w", fg="#174ea6").pack(fill="x", padx=10, pady=(10, 2))
+
+        existing_config = load_config()
+        ai_fields: dict[str, tk.Entry] = {}
+        ai_config_defs = [
+            ("ANTHROPIC_API_KEY",      "Anthropic API Key (Claude)",    "show"),
+            ("ANTHROPIC_MODEL",        "Claude Model",                   "normal"),
+            ("AZURE_OPENAI_API_KEY",   "Azure OpenAI API Key",           "show"),
+            ("AZURE_OPENAI_ENDPOINT",  "Azure OpenAI Endpoint",          "normal"),
+            ("AZURE_OPENAI_DEPLOYMENT","Azure Deployment Name",          "normal"),
+        ]
+        for key, label, show in ai_config_defs:
+            tk.Label(window, text=label, anchor="w", fg="#444").pack(fill="x", padx=14, pady=(6, 0))
+            entry = tk.Entry(window, show="*" if show == "show" else "")
+            entry.insert(0, existing_config.get(key, ""))
+            entry.pack(fill="x", padx=14)
+            ai_fields[key] = entry
+
+        def _save_ai_config() -> None:
+            cfg = {k: v.get().strip() for k, v in ai_fields.items() if v.get().strip()}
+            # Preserve any other existing keys
+            full = {**load_config(), **cfg}
+            CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            CONFIG_PATH.write_text(json.dumps(full, indent=2), encoding="utf-8")
+            messagebox.showinfo("Agentic Kali", f"AI config saved to {CONFIG_PATH}")
+
+        tk.Button(window, text="Save AI Config", command=_save_ai_config,
+                  bg="#174ea6", fg="white", relief="flat").pack(fill="x", padx=10, pady=(8, 4))
+
+        tk.Label(window, text="─" * 60, fg="#cccccc").pack(fill="x", padx=10)
+
+        # ── Scope section ──────────────────────────────────────────────
+        tk.Label(window, text="Scope Settings", font=("TkDefaultFont", 10, "bold"),
+                 anchor="w", fg="#174ea6").pack(fill="x", padx=10, pady=(8, 2))
 
         fields = {
             "Engagement": tk.Entry(window),
@@ -1828,26 +1866,23 @@ class FloatingPrompt:
 
         existing = self._load_scope_or_none()
         if existing:
-            defaults.update(
-                {
-                    "Engagement": existing.engagement_name,
-                    "Targets": ",".join(existing.targets),
-                    "Actions": ",".join(existing.allowed_actions),
-                    "Approval": existing.approval_mode,
-                    "Permission": "AUTHORIZED" if existing.signed_permission else "",
-                    "Public Targets": str(existing.public_targets_allowed).lower(),
-                    "Testing Goal": existing.testing_goal,
-                    "Restrictions": existing.restrictions,
-                }
-            )
+            defaults.update({
+                "Engagement": existing.engagement_name,
+                "Targets": ",".join(existing.targets),
+                "Actions": ",".join(existing.allowed_actions),
+                "Approval": existing.approval_mode,
+                "Permission": "AUTHORIZED" if existing.signed_permission else "",
+                "Public Targets": str(existing.public_targets_allowed).lower(),
+                "Testing Goal": existing.testing_goal,
+                "Restrictions": existing.restrictions,
+            })
 
         for label, entry in fields.items():
-            tk.Label(window, text=label, anchor="w").pack(fill="x", padx=10, pady=(8, 0))
+            tk.Label(window, text=label, anchor="w").pack(fill="x", padx=10, pady=(6, 0))
             entry.insert(0, defaults[label])
             entry.pack(fill="x", padx=10)
 
-        tk.Button(window, text="Save Scope", command=lambda: self._save_scope(fields)).pack(fill="x", padx=10, pady=12)
-        tk.Button(window, text="Azure Config Wizard", command=lambda: run_config_wizard()).pack(fill="x", padx=10)
+        tk.Button(window, text="Save Scope", command=lambda: self._save_scope(fields)).pack(fill="x", padx=10, pady=10)
 
     def show_security_settings(self) -> None:
         if not self.admin_mode:
