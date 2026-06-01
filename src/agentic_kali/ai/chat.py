@@ -33,11 +33,19 @@ class ChatSession:
         self.admin_mode = admin_mode
 
     def reply(self, user_message: str) -> str:
+        from agentic_kali.ai.provider import APIKeyError
         scripted = self._scripted(user_message)
         if scripted:
             return scripted
         self.messages.append({"role": "user", "content": user_message})
-        response = AIProvider().chat(self.messages)
+        try:
+            response = AIProvider().chat(self.messages)
+        except APIKeyError as exc:
+            return (
+                f"⚠ API Key Error ({exc.provider})\n\n"
+                f"{exc.detail}\n\n"
+                "Fix: Options → Settings → update your API key → Save AI Config"
+            )
         if not response:
             response = self._fallback(user_message)
         self.messages.append({"role": "assistant", "content": response})

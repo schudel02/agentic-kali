@@ -15,7 +15,12 @@ class AIPlanner:
         self.command = command
 
     def propose_next_actions(self) -> list[Action]:
-        ai_names = AIProvider().suggest_actions(self._prompt())
+        from agentic_kali.ai.provider import APIKeyError
+        try:
+            ai_names = AIProvider().suggest_actions(self._prompt())
+        except APIKeyError as exc:
+            self.evidence.log("ai.key_error", {"provider": exc.provider, "code": exc.code, "detail": exc.detail})
+            ai_names = []
         # Only skip actions run in THIS session, not prior runs (prior runs inform the AI prompt)
         session_done = [
             e["data"].get("action")

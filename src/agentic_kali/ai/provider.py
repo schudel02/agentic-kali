@@ -8,6 +8,59 @@ import urllib.error
 from agentic_kali.config import get_setting
 
 
+class APIKeyError(Exception):
+    """Raised when an API key is invalid, expired, or missing permissions."""
+    def __init__(self, provider: str, code: int, detail: str) -> None:
+        self.provider = provider
+        self.code = code
+        self.detail = detail
+        super().__init__(f"{provider} API key error ({code}): {detail}")
+
+
+_ERROR_HINTS: dict[int, str] = {
+    401: "Invalid or expired API key. Check the key is copied correctly with no extra spaces.",
+    403: "This key does not have permission for this model or endpoint.",
+    429: "Rate limit reached or quota exceeded. Check your plan/credits.",
+    500: "Provider server error — try again in a moment.",
+}
+
+
+def _hint(code: int, body: str) -> str:
+    base = _ERROR_HINTS.get(code, f"HTTP {code} error.")
+    if "credit" in body.lower() or "balance" in body.lower():
+        base += " Your account may be out of credits."
+    if "invalid_api_key" in body.lower() or "authentication" in body.lower():
+        base = "Invalid API key. Go to console.anthropic.com and verify your key."
+    return base
+
+
+def validate_anthropic_key(api_key: str) -> str:
+    """Test an Anthropic key with a minimal request. Returns 'ok' or an error message."""
+    body = json.dumps({
+        "model": "claude-haiku-4-5",
+        "max_tokens": 10,
+        "messages": [{"role": "user", "content": "ping"}],
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=body,
+        headers={
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10):
+            return "ok"
+    except urllib.error.HTTPError as exc:
+        body_text = exc.read().decode("utf-8", errors="replace")
+        return _hint(exc.code, body_text)
+    except Exception as exc:
+        return f"Connection error: {exc}"
+
+
 class AIProvider:
     """Multi-provider AI backend.
 
@@ -77,9 +130,12 @@ class AIProvider:
             return _claude_extract_text(data)
         except urllib.error.HTTPError as exc:
             body_text = exc.read().decode("utf-8", errors="replace")
-            return f"[Claude API error {exc.code}: {body_text[:200]}]"
+            hint = _hint(exc.code, body_text)
+            raise APIKeyError("Anthropic", exc.code, hint) from exc
+        except APIKeyError:
+            raise
         except Exception as exc:
-            return f"[Claude error: {exc}]"
+            return f"[Claude connection error: {exc}]"
 
     def _claude_actions(self, prompt: str) -> list[str]:
         api_key = get_setting("ANTHROPIC_API_KEY")
@@ -111,6 +167,11 @@ class AIProvider:
                 data = json.loads(resp.read().decode("utf-8"))
             text = _claude_extract_text(data)
             return _parse_action_names(text)
+        except urllib.error.HTTPError as exc:
+            body_text = exc.read().decode("utf-8", errors="replace")
+            raise APIKeyError("Anthropic", exc.code, _hint(exc.code, body_text)) from exc
+        except APIKeyError:
+            raise
         except Exception:
             return []
 

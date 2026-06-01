@@ -1406,6 +1406,16 @@ class FloatingPrompt:
             self._tool_timer_var.set(f"✓ {action} done")
             self._subagent_mark_done(action)
 
+        elif name == "ai.key_error" and isinstance(data, dict):
+            provider = data.get("provider", "AI")
+            detail = data.get("detail", "Unknown error")
+            code = data.get("code", "")
+            self._say_static(
+                "Agent Kal",
+                f"⚠ {provider} API Key Error (code {code})\n\n"
+                f"{detail}\n\n"
+                "Fix: Options → Settings → update your API key → Save AI Config → Test Connection",
+            )
         elif name == "subagent.error" and isinstance(data, dict):
             action = data.get("action", "")
             self._subagent_write(action, f"⚠ ERROR: {data.get('error', 'unknown')}\n", "error")
@@ -1834,8 +1844,31 @@ class FloatingPrompt:
             CONFIG_PATH.write_text(json.dumps(full, indent=2), encoding="utf-8")
             messagebox.showinfo("Agentic Kali", f"AI config saved to {CONFIG_PATH}")
 
-        tk.Button(window, text="Save AI Config", command=_save_ai_config,
-                  bg="#174ea6", fg="white", relief="flat").pack(fill="x", padx=10, pady=(8, 4))
+        btn_frame = tk.Frame(window)
+        btn_frame.pack(fill="x", padx=10, pady=(8, 4))
+        tk.Button(btn_frame, text="Save AI Config", command=_save_ai_config,
+                  bg="#174ea6", fg="white", relief="flat").pack(side="left", fill="x", expand=True, padx=(0, 4))
+
+        def _test_connection() -> None:
+            from agentic_kali.ai.provider import validate_anthropic_key
+            key = ai_fields.get("ANTHROPIC_API_KEY", tk.Entry()).get().strip()
+            if not key:
+                messagebox.showwarning("Test Connection", "Enter an Anthropic API key first.")
+                return
+            result_var.set("Testing…")
+            window.update_idletasks()
+            result = validate_anthropic_key(key)
+            if result == "ok":
+                result_var.set("✓ Connected")
+                messagebox.showinfo("Test Connection", "✓ Anthropic API key is valid and working.")
+            else:
+                result_var.set("✗ Error")
+                messagebox.showerror("API Key Error", f"Connection failed:\n\n{result}")
+
+        tk.Button(btn_frame, text="Test Connection", command=_test_connection,
+                  relief="flat").pack(side="right")
+        result_var = tk.StringVar(value="")
+        tk.Label(window, textvariable=result_var, anchor="w", fg="#3fb950").pack(fill="x", padx=14)
 
         tk.Label(window, text="─" * 60, fg="#cccccc").pack(fill="x", padx=10)
 
