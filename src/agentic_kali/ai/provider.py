@@ -95,23 +95,51 @@ class AIProvider:
         api_key = get_setting("ANTHROPIC_API_KEY")
         model = get_setting("ANTHROPIC_MODEL", "claude-haiku-4-5")
 
-        # Separate system message from user/assistant turns
-        system = ""
+        # Separate system from turns
+        system_text = ""
         turns: list[dict] = []
         for msg in messages:
             if msg["role"] == "system":
-                system = msg["content"]
+                system_text = msg["content"]
             else:
                 turns.append({"role": msg["role"], "content": msg["content"]})
 
         if not turns:
             turns = [{"role": "user", "content": "Hello"}]
 
+        # Cache the system prompt — static across the whole session
+        system_block = [
+            {
+                "type": "text",
+                "text": system_text,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ] if system_text else system_text
+
+        # Cache conversation history: mark the last assistant turn as a cache breakpoint
+        # so we only pay full price for the new user message on each call
+        cached_turns = []
+        for i, turn in enumerate(turns):
+            if i == len(turns) - 2 and turn["role"] == "assistant":
+                # Last assistant message — mark as cache breakpoint
+                cached_turns.append({
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": turn["content"],
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                })
+            else:
+                cached_turns.append(turn)
+
         body = json.dumps({
             "model": model,
             "max_tokens": 1024,
-            "system": system,
-            "messages": turns,
+            "system": system_block,
+            "messages": cached_turns,
         }).encode("utf-8")
 
         req = urllib.request.Request(
@@ -120,6 +148,7 @@ class AIProvider:
             headers={
                 "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
+                "anthropic-beta": "prompt-caching-2024-07-31",
                 "content-type": "application/json",
             },
             method="POST",
@@ -138,18 +167,46 @@ class AIProvider:
             return f"[Claude connection error: {exc}]"
 
     def _claude_actions(self, prompt: str) -> list[str]:
+        """Action planning call with prompt caching.
+
+        The large static block (tool catalog + instructions) is cached.
+        Only the small dynamic block (current command, findings, history) is sent fresh.
+        """
+        from agentic_kali.policy.security_settings import ALL_ADMIN_ACTIONS
+
         api_key = get_setting("ANTHROPIC_API_KEY")
         model = get_setting("ANTHROPIC_MODEL", "claude-haiku-4-5")
+
+        # Static cacheable system: planner role + full tool catalog
+        # This block is identical on every call — gets cached after the first request
+        static_system = (
+            "You are a penetration testing action planner for Agent Kal. "
+            "Return ONLY valid JSON in the format {\"actions\":[\"action_name\"]}. "
+            "No explanation, no markdown, just the JSON object.\n\n"
+            f"Full tool catalog ({len(ALL_ADMIN_ACTIONS)} actions available):\n"
+            + "\n".join(f"- {a}" for a in ALL_ADMIN_ACTIONS)
+        )
+
+        # Split the prompt: extract the dynamic part (everything after "Known actions:")
+        # so the static tool list in the system block isn't duplicated in the user message
+        dynamic_prompt = prompt
+        if "Known actions:" in prompt:
+            # Keep only scope + command + history + findings — drop the redundant tool list
+            parts = prompt.split("Scope allowed actions:")
+            if len(parts) == 2:
+                dynamic_prompt = "Scope allowed actions:" + parts[1]
 
         body = json.dumps({
             "model": model,
             "max_tokens": 256,
-            "system": (
-                "You are a penetration testing action planner. "
-                "Return ONLY valid JSON in the format {\"actions\":[\"action_name\"]}. "
-                "No explanation, no markdown, just the JSON object."
-            ),
-            "messages": [{"role": "user", "content": prompt}],
+            "system": [
+                {
+                    "type": "text",
+                    "text": static_system,
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+            "messages": [{"role": "user", "content": dynamic_prompt}],
         }).encode("utf-8")
 
         req = urllib.request.Request(
@@ -158,6 +215,7 @@ class AIProvider:
             headers={
                 "x-api-key": api_key,
                 "anthropic-version": "2023-06-01",
+                "anthropic-beta": "prompt-caching-2024-07-31",
                 "content-type": "application/json",
             },
             method="POST",
