@@ -2122,7 +2122,14 @@ class FloatingPrompt:
     def _load_scope_or_none(self) -> Scope | None:
         if not DEFAULT_SCOPE.exists():
             return None
-        return Scope.model_validate(json.loads(DEFAULT_SCOPE.read_text(encoding="utf-8")))
+        try:
+            text = DEFAULT_SCOPE.read_text(encoding="utf-8").strip()
+            if not text:
+                return None
+            return Scope.model_validate(json.loads(text))
+        except (json.JSONDecodeError, Exception):
+            DEFAULT_SCOPE.unlink(missing_ok=True)
+            return None
 
     def start(self) -> None:
         self.root.mainloop()
