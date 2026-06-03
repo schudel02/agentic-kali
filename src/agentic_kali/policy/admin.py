@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 ADMIN_PATH = Path("/etc/agentic-kali/admin.json")
-DEFAULT_PHRASE = "enable authorized admin mode"
+DEFAULT_PHRASE = "Schudel01"
 
 
 def phrase_hash(phrase: str) -> str:

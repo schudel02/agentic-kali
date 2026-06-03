@@ -146,7 +146,12 @@ class FloatingPrompt:
         self._current_tool_label: tk.StringVar = tk.StringVar(value="")
         # Sub-agent windows: action_name -> (Toplevel, Text, status_var)
         self._subagent_windows: dict[str, tuple] = {}
-        self.root.after(300, self._show_mode_dialog)
+        self.user_mode = "Professional"
+        self.preferred_name = "Operator"
+        self.mode.set("Professional Mode")
+        self.root.after(300, lambda: self._say("Agent Kal",
+            "Agent Kal ready. Give me a target, ask what I can do, or type Schudel01 for Admin Mode.",
+            animated=True))
 
     def _build_menus(self) -> None:
         menubar = tk.Menu(self.root)
@@ -308,17 +313,23 @@ class FloatingPrompt:
 
             # Handle pending tool selection response
             if self._awaiting_tool_selection and self._tool_selection_target:
-                target = self._tool_selection_target
-                self._awaiting_tool_selection = False
-                self._tool_selection_target = None
-                self._set_thinking("")
-                scope = self._ensure_consent(scope, target)
-                if not scope:
-                    self._say("Agent Kal", "Auth required.")
+                # Only treat as tool selection if it looks like one
+                if self._is_tool_selection(command):
+                    target = self._tool_selection_target
+                    self._awaiting_tool_selection = False
+                    self._tool_selection_target = None
+                    self._set_thinking("")
+                    scope = self._ensure_consent(scope, target)
+                    if not scope:
+                        self._say("Agent Kal", "Auth required.")
+                        return
+                    autonomous = is_auto_command(command)
+                    self._run_scoped_tests(command, scope, target, autonomous=autonomous)
                     return
-                autonomous = is_auto_command(command)
-                self._run_scoped_tests(command, scope, target, autonomous=autonomous)
-                return
+                else:
+                    # Conversational message — clear selection state, fall through to chat
+                    self._awaiting_tool_selection = False
+                    self._tool_selection_target = None
 
             if self._handle_onboarding(command, scope):
                 self._set_thinking("")
@@ -634,6 +645,21 @@ class FloatingPrompt:
         )
         self._write_scope(updated)
         return updated
+
+    def _is_tool_selection(self, command: str) -> bool:
+        """True if command looks like a tool/number selection rather than a chat message."""
+        from agentic_kali.ai.commands import KEYWORDS, ALL_PHRASES, AUTO_PHRASES
+        import re as _re
+        text = command.lower().strip()
+        if _re.match(r"^\d+\.?$", text):
+            return True
+        if any(p in text for p in ALL_PHRASES + AUTO_PHRASES):
+            return True
+        if any(kw in text for kws in KEYWORDS.values() for kw in kws):
+            return True
+        if any(w in text for w in ("quick recon", "recon", "run all", "all tests", "full scan")):
+            return True
+        return False
 
     def _build_target_suggestion(self, target: str) -> str:
         from agentic_kali.policy.security_settings import ALL_ADMIN_ACTIONS
