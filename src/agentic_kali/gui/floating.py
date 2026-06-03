@@ -1829,11 +1829,60 @@ class FloatingPrompt:
             ("AZURE_OPENAI_ENDPOINT",  "Azure OpenAI Endpoint",          "normal"),
             ("AZURE_OPENAI_DEPLOYMENT","Azure Deployment Name",          "normal"),
         ]
+        def _bind_paste(entry: tk.Entry) -> None:
+            """Add Ctrl+V, Shift+Insert, and right-click paste to an entry."""
+            def _do_paste(event=None) -> str:
+                try:
+                    text = window.clipboard_get()
+                    entry.delete(tk.SEL_FIRST, tk.SEL_LAST)
+                except tk.TclError:
+                    pass
+                try:
+                    entry.insert(tk.INSERT, text)
+                except tk.TclError:
+                    pass
+                return "break"
+            def _select_all(event=None) -> str:
+                entry.select_range(0, tk.END)
+                return "break"
+            entry.bind("<Control-v>", _do_paste)
+            entry.bind("<Control-V>", _do_paste)
+            entry.bind("<Shift-Insert>", _do_paste)
+            entry.bind("<Button-2>", _do_paste)   # middle-click paste (X11)
+            entry.bind("<Control-a>", _select_all)
+            menu = tk.Menu(window, tearoff=0)
+            menu.add_command(label="Paste", command=_do_paste)
+            menu.add_command(label="Select All", command=_select_all)
+            menu.add_command(label="Clear", command=lambda: entry.delete(0, tk.END))
+            entry.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
+
         for key, label, show in ai_config_defs:
-            tk.Label(window, text=label, anchor="w", fg="#444").pack(fill="x", padx=14, pady=(6, 0))
-            entry = tk.Entry(window, show="*" if show == "show" else "")
+            row = tk.Frame(window)
+            row.pack(fill="x", padx=14, pady=(6, 0))
+            tk.Label(row, text=label, anchor="w", fg="#444").pack(side="left")
+            is_secret = show == "show"
+            if is_secret:
+                show_var = tk.BooleanVar(value=False)
+                def _make_toggle(e, sv):
+                    def _toggle():
+                        e.configure(show="" if sv.get() else "*")
+                    return _toggle
+                toggle_btn = tk.Button(row, text="Show", width=5, relief="flat", fg="#174ea6",
+                                       command=lambda: None)  # patched below
+            entry = tk.Entry(window, show="*" if is_secret else "")
             entry.insert(0, existing_config.get(key, ""))
-            entry.pack(fill="x", padx=14)
+            entry.pack(fill="x", padx=14, ipady=3)
+            _bind_paste(entry)
+            if is_secret:
+                def _make_toggle_cmd(en=entry, btn=toggle_btn):
+                    showing = [False]
+                    def _toggle():
+                        showing[0] = not showing[0]
+                        en.configure(show="" if showing[0] else "*")
+                        btn.configure(text="Hide" if showing[0] else "Show")
+                    return _toggle
+                toggle_btn.configure(command=_make_toggle_cmd())
+                toggle_btn.pack(side="right", in_=row)
             ai_fields[key] = entry
 
         def _save_ai_config() -> None:
