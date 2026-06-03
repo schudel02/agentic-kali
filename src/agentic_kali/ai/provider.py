@@ -93,7 +93,7 @@ class AIProvider:
 
     def _claude_chat(self, messages: list[dict[str, str]]) -> str:
         api_key = get_setting("ANTHROPIC_API_KEY")
-        model = get_setting("ANTHROPIC_MODEL", "claude-sonnet-4-5")
+        model = get_setting("ANTHROPIC_MODEL", "claude-haiku-4-5")
 
         # Separate system message from user/assistant turns
         system = ""
