@@ -86,8 +86,9 @@ class Orchestrator:
             # Rule-based next actions from findings
             next_actions = self._rule_based_next(ran)
 
-            # Fall back to planner if no rule-based suggestions
-            if not next_actions:
+            # Fall back to planner only if rule-based produced nothing
+            # (saves tokens — autonomous mode mostly uses rule-based chaining)
+            if not next_actions and not self.goal:
                 planner = AIPlanner(self.scope, self.evidence, command=self.command)
                 proposed = planner.propose_next_actions()
                 next_actions = [a for a in proposed if (a.name, a.target) not in ran]

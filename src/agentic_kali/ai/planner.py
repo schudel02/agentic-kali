@@ -16,20 +16,25 @@ class AIPlanner:
 
     def propose_next_actions(self) -> list[Action]:
         from agentic_kali.ai.provider import APIKeyError
-        try:
-            ai_names = AIProvider().suggest_actions(self._prompt())
-        except APIKeyError as exc:
-            self.evidence.log("ai.key_error", {"provider": exc.provider, "code": exc.code, "detail": exc.detail})
-            ai_names = []
-        # Only skip actions run in THIS session, not prior runs (prior runs inform the AI prompt)
+
         session_done = [
             e["data"].get("action")
             for e in self.evidence.events
             if e["event"] == "action.started"
         ]
-        selected = ai_names or actions_from_command(
-            self.command, self.scope.allowed_actions, session_done
-        )
+
+        # Skip Claude if keywords already give a clear answer — saves a full API call
+        keyword_names = actions_from_command(self.command, self.scope.allowed_actions, session_done)
+        if self._command_is_unambiguous():
+            ai_names = []
+            selected = keyword_names
+        else:
+            try:
+                ai_names = AIProvider().suggest_actions(self._prompt())
+            except APIKeyError as exc:
+                self.evidence.log("ai.key_error", {"provider": exc.provider, "code": exc.code, "detail": exc.detail})
+                ai_names = []
+            selected = ai_names or keyword_names
         all_known = set(ALL_ADMIN_ACTIONS)
         allowed_names = [
             name
@@ -52,6 +57,20 @@ class AIPlanner:
         )
         return proposed
 
+    def _command_is_unambiguous(self) -> bool:
+        """Return True when keyword matching gives a confident answer — no Claude needed."""
+        from agentic_kali.ai.commands import KEYWORDS, ALL_PHRASES, AUTO_PHRASES
+        text = self.command.lower()
+        # Explicit tool keyword, 'run all', or 'auto' → skip Claude
+        if any(phrase in text for phrase in ALL_PHRASES + AUTO_PHRASES):
+            return True
+        if any(kw in text for kws in KEYWORDS.values() for kw in kws):
+            return True
+        # No command at all → rule-based fallback is fine
+        if not self.command.strip():
+            return True
+        return False
+
     def _prior_completed(self) -> list[str]:
         """Action names completed in prior runs against the same targets."""
         targets = set(self.scope.targets)
@@ -65,29 +84,33 @@ class AIPlanner:
         return completed
 
     def _prompt(self) -> str:
+        # Keep only the last 8 completed actions — older ones add tokens without value
         session_completed = [
-            f"{e['data'].get('action')} on {e['data'].get('target')}"
+            e["data"].get("action")
             for e in self.evidence.events
             if e["event"] == "action.started"
-        ]
-        findings_summary = [
-            {"title": f["title"], "severity": f["severity"], "target": f["target"]}
-            for f in self.evidence.findings
-        ]
-        prior_completed = self._prior_completed()
-        known = ALL_ADMIN_ACTIONS if any(a not in ALL_ACTIONS for a in self.scope.allowed_actions) else ALL_ACTIONS
+        ][-8:]
+
+        # Truncate findings to the 5 most severe, title+severity only — no long evidence text
+        findings = sorted(
+            self.evidence.findings,
+            key=lambda f: {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}.get(f.get("severity", "info"), 4),
+        )[:5]
+        findings_summary = [f"{f['severity']}:{f['title'][:60]}" for f in findings]
+
+        prior_completed = self._prior_completed()[:8]  # cap prior history too
+
+        # Scope allowed actions — only send names not titles (shorter)
+        allowed = [a for a in self.scope.allowed_actions if a in set(ALL_ADMIN_ACTIONS)]
 
         return (
-            "Return only JSON like {\"actions\":[\"ping_check\"]}. "
-            f"Known actions: {', '.join(known)}. "
-            f"Scope allowed actions: {', '.join(self.scope.allowed_actions)}. "
-            f"Intrusive allowed: {self.scope.intrusive_allowed}. "
-            f"User command: {self.command}. "
-            f"Already completed this session: {session_completed or 'none'}. "
-            f"Completed in prior runs: {prior_completed or 'none'}. "
-            f"Findings so far: {findings_summary or 'none'}. "
-            "Choose only actions allowed by scope. "
-            "Avoid repeating actions already completed in this or prior runs unless new findings justify it. "
-            "Prioritize actions that build on existing findings or explore areas not yet tested. "
-            "Use intrusive actions only when intrusive_allowed is true and the request calls for them."
+            f"cmd:{self.command or 'none'} "
+            f"allowed:{','.join(allowed)} "
+            f"intrusive:{self.scope.intrusive_allowed} "
+            f"done_session:{','.join(session_completed) or 'none'} "
+            f"done_prior:{','.join(prior_completed) or 'none'} "
+            f"findings:{';'.join(findings_summary) or 'none'} "
+            "Pick actions from allowed list not already done. "
+            "Intrusive only if intrusive=True. "
+            "Return JSON only."
         )

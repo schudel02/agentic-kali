@@ -25,18 +25,26 @@ ADMIN_SYSTEM_PROMPT = (
 )
 
 
+_MAX_TURNS = 12        # compress history after this many user+assistant pairs
+_SUMMARY_KEEP = 3     # keep this many recent pairs verbatim after summarising
+
+
 class ChatSession:
     def __init__(self, admin_mode: bool = False) -> None:
         prompt = ADMIN_SYSTEM_PROMPT if admin_mode else SYSTEM_PROMPT
         self.messages: list[dict[str, str]] = [{"role": "system", "content": prompt}]
         self.awaiting_scope_choice = False
         self.admin_mode = admin_mode
+        self._turn_count = 0
 
     def reply(self, user_message: str) -> str:
         from agentic_kali.ai.provider import APIKeyError
         scripted = self._scripted(user_message)
         if scripted:
             return scripted
+        self._turn_count += 1
+        if self._turn_count > _MAX_TURNS:
+            self._compress_history()
         self.messages.append({"role": "user", "content": user_message})
         try:
             response = AIProvider().chat(self.messages)
@@ -50,6 +58,29 @@ class ChatSession:
             response = self._fallback(user_message)
         self.messages.append({"role": "assistant", "content": response})
         return response
+
+    def _compress_history(self) -> None:
+        """Summarise old conversation turns into a single compact message to save tokens."""
+        system = [m for m in self.messages if m["role"] == "system"]
+        turns = [m for m in self.messages if m["role"] != "system"]
+        if len(turns) <= _SUMMARY_KEEP * 2:
+            return
+        old = turns[: -(_SUMMARY_KEEP * 2)]
+        recent = turns[-(_SUMMARY_KEEP * 2):]
+        # Build a one-line summary of older turns without another API call
+        topics = []
+        for m in old:
+            if m["role"] == "user":
+                snippet = m["content"][:80].replace("\n", " ")
+                topics.append(snippet)
+        summary_text = (
+            "[Earlier conversation summary — kept for context]\n"
+            + "\n".join(f"- User asked: {t}" for t in topics[:6])
+        )
+        summary_msg = {"role": "user", "content": summary_text}
+        ack_msg = {"role": "assistant", "content": "Understood. Continuing from here."}
+        self.messages = system + [summary_msg, ack_msg] + recent
+        self._turn_count = _SUMMARY_KEEP + 1
 
     def _scripted(self, user_message: str) -> str | None:
         lower = user_message.lower().strip()

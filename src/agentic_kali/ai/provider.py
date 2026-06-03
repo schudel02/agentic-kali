@@ -137,7 +137,7 @@ class AIProvider:
 
         body = json.dumps({
             "model": model,
-            "max_tokens": 1024,
+            "max_tokens": 512,
             "system": system_block,
             "messages": cached_turns,
         }).encode("utf-8")

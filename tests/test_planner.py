@@ -48,4 +48,4 @@ def test_planner_prompt_allows_scoped_intrusive_actions():
     )
     prompt = AIPlanner(scope, EvidenceStore(), command="sql injection testing")._prompt()
     assert "sqlmap_safe" in prompt
-    assert "Intrusive allowed: True" in prompt
+    assert "intrusive:True" in prompt
