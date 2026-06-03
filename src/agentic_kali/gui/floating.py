@@ -352,7 +352,9 @@ class FloatingPrompt:
                 self._set_thinking("")
                 self._handle_build_request(build_request)
                 return
-            target = extract_target(command) or self.last_target
+            # Only use last_target if command has explicit test intent
+            extracted = extract_target(command)
+            target = extracted or (self.last_target if wants_tool_run(command) or wants_tool_run_intent(command) else None)
             if not target and self._is_intrusive_request(command):
                 self._set_thinking("")
                 self._say("Agent Kal", "Target?")

@@ -22,11 +22,23 @@ class BuiltTool:
     command: str
 
 
+_BUILD_TRIGGERS = (
+    "build", "create", "write", "make", "generate", "set up", "setup", "deploy",
+)
+_BUILD_TARGETS = (
+    "custom tool", "testing program", "test program", "scanner", "helper app", "helper tool",
+    "phishing site", "phishing page", "phishing template", "phish", "clone",
+    "fake login", "fake site", "credential harvester", "landing page",
+    "payload", "reverse shell", "backdoor", "exploit",
+    "social engineering", "email campaign", "awareness campaign",
+)
+
+
 def parse_build_request(text: str) -> BuildRequest | None:
     lowered = text.lower()
-    if not any(phrase in lowered for phrase in ("build", "create", "write", "make")):
+    if not any(phrase in lowered for phrase in _BUILD_TRIGGERS):
         return None
-    if not any(phrase in lowered for phrase in ("custom tool", "testing program", "test program", "scanner", "helper app", "helper tool")):
+    if not any(phrase in lowered for phrase in _BUILD_TARGETS):
         return None
     name = _slug(text)
     return BuildRequest(name=name, description=text.strip())
