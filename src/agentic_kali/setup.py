@@ -35,7 +35,13 @@ def run_config_wizard(path: Path = CONFIG_PATH) -> dict:
     return config
 
 
+def _sanitize(value: str) -> str:
+    """Remove control characters that would corrupt the JSON config file."""
+    import re
+    return re.sub(r"[\x00-\x1f\x7f]", "", value).strip()
+
+
 def _ask(label: str, default: str) -> str:
-    value = input(f"{label} [{default}]: ").strip()
+    value = _sanitize(input(f"{label} [{default}]: "))
     return value or default
 

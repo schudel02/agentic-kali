@@ -1837,7 +1837,10 @@ class FloatingPrompt:
             ai_fields[key] = entry
 
         def _save_ai_config() -> None:
-            cfg = {k: v.get().strip() for k, v in ai_fields.items() if v.get().strip()}
+            import re as _re
+            def _clean(s: str) -> str:
+                return _re.sub(r"[\x00-\x1f\x7f]", "", s).strip()
+            cfg = {k: _clean(v.get()) for k, v in ai_fields.items() if _clean(v.get())}
             # Preserve any other existing keys
             full = {**load_config(), **cfg}
             CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
